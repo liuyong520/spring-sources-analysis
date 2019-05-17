@@ -20,6 +20,7 @@ public ClassPathXmlApplicationContext(String[] configLocations, boolean refresh,
 		//最终会调用的是AbstractApplicationContext的构造方法	
 		super(parent);
 		//根据配置的路径生成classpath的加载路径
+		
 		setConfigLocations(configLocations);
 		if (refresh) {
 			//刷新容器完成容器的初始化工作
@@ -56,18 +57,22 @@ public void setParent(ApplicationContext parent) {
 		}
 	}
 }
-@Override
+//getEnvironment方法来自于ConfigurableApplicationContext接口，源码很简单，如果为空就调用createEnvironment创建一个。AbstractApplicationContext.createEnvironment:
 public ConfigurableEnvironment getEnvironment() {
 	if (this.environment == null) {
+
 		this.environment = createEnvironment();
 	}
 	return this.environment;
 }
 ```
 
+
 setConfigLocations方法：
 
 ```java
+//此方法的目的在于将占位符(placeholder)解析成实际的地址。比如可以这么写: new ClassPathXmlApplicationContext("classpath:config.xml");那么classpath:就是需要被解析的
+
 public void setConfigLocations(String... locations) {
 	if (locations != null) {
 		Assert.noNullElements(locations, "Config locations must not be null");
@@ -167,7 +172,9 @@ protected void prepareRefresh() {
 	initPropertySources();
 
 	//验证环境配置的properties是否是require的
-	//如果是key=value value 为空的话，就会存到一个MissingRequiredPropertiesException（这是一个异常的集合） 类里，同时抛出MissingRequiredPropertiesException
+	//如果是key=value value 为空的话，
+	//就会存到一个MissingRequiredPropertiesException（这是一个异常的集合）
+	//类里，同时抛出MissingRequiredPropertiesException
 	getEnvironment().validateRequiredProperties();
 
 	//初始化spring事件的容器
@@ -496,7 +503,7 @@ protected void finishRefresh() {
 	// 发布容器刷新事件
 	publishEvent(new ContextRefreshedEvent(this));
 
-	// Participate in LiveBeansView MBean, if active.
+	// 向MBeanServer注册LiveBeansView，可以通过JMX来监控此ApplicationContext。
 	LiveBeansView.registerApplicationContext(this);
 }
 ```
@@ -641,3 +648,7 @@ public static void invokeBeanFactoryPostProcessors(
 	beanFactory.clearMetadataCache();
 }
 ```
+
+这个类方法干的活也是有很多，其中就包括BeanFactory的设置、Configuration类解析、Bean实例化、属性和依赖注入、事件监听器注册。
+
+# 
