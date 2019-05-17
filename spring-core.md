@@ -1,8 +1,10 @@
+[TOC]
+
 这么多的源代码，这么多包，往往不知道从何处开始下手阅读的这个源代码。我们在接触spring的时候，首先介绍的都是按照IOC、MVC、AOP、这种顺序介绍的。
 
 # ClassPathXmlApplicationContext
 
-
+## 类的继承图谱
 
 废话不多说，就从这个启动类开始看吧。
 
@@ -13,7 +15,7 @@
 
 
 Classpath应用上下文最顶层接口Beanfactory。Beanfactory就是springIOC的容器。
-
+## 构造方法
 ```java
 public ClassPathXmlApplicationContext(String[] configLocations, boolean refresh, ApplicationContext parent)
 			throws BeansException {
@@ -68,7 +70,7 @@ public ConfigurableEnvironment getEnvironment() {
 ```
 
 
-setConfigLocations方法：
+## setConfigLocations
 
 ```java
 //此方法的目的在于将占位符(placeholder)解析成实际的地址。比如可以这么写: new ClassPathXmlApplicationContext("classpath:config.xml");那么classpath:就是需要被解析的
@@ -90,6 +92,7 @@ protected String resolvePath(String path) {
 	return getEnvironment().resolveRequiredPlaceholders(path);
 }
 ```
+## onrefresh
 
 重点介绍这个refresh方法：
 ```java
@@ -156,6 +159,8 @@ public void refresh() throws BeansException, IllegalStateException {
 	}
 ```
 
+### prepareRefresh
+
 看看prepareRefresh 这个方法：
 ```java
 protected void prepareRefresh() {
@@ -181,6 +186,8 @@ protected void prepareRefresh() {
 	this.earlyApplicationEvents = new LinkedHashSet<ApplicationEvent>();
 }
 ```
+
+### obtainFreshBeanFactory
 
 接着继续看：ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
 ```java
@@ -222,6 +229,9 @@ protected final void refreshBeanFactory() throws BeansException {
 	}
 }
 ```
+
+### prepareBeanFactory
+
 接着往下看prepareBeanFactory 方法很长。
 ```java
 protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
@@ -355,6 +365,9 @@ private void invokeAwareInterfaces(Object bean) {
 }
 ```
 同理LoadTimeWeaverAwareProcessor里面实现也可以从postProcessBeforeInitialization的方法。这里就不介绍了。
+
+### postProcessBeanFactory
+
 继续介绍refresh方法里的方法postProcessBeanFactory(beanFactory);进去一看，一个未实现的空方法。干嘛用的？这个spring的提供的扩展，如果我们需要在容器所有bean定义被加载未实例化之前，我们可以注册一些BeanPostProcessors来实现在一些bean实例化之后做一些操作。
 ```java
 protected void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
@@ -370,145 +383,6 @@ protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory b
 }
 ```
 
-继续往下走：registerBeanPostProcessors
-```java
-protected void registerBeanPostProcessors(ConfigurableListableBeanFactory beanFactory) {
-	//注册BeanPostProcessors后面统一看这个PostProcessorRegistrationDelegate
-	PostProcessorRegistrationDelegate.registerBeanPostProcessors(beanFactory, this);
-}
-```
-
-继续往下看：initMessageSource 实例化消息源用来做spring的事件传播机制。
-```java
-protected void initMessageSource() {
-	//拿到当前的beanFactory
-	ConfigurableListableBeanFactory beanFactory = getBeanFactory();
-	//如果已经存在MessageSource了
-	if (beanFactory.containsLocalBean(MESSAGE_SOURCE_BEAN_NAME)) {
-		this.messageSource = beanFactory.getBean(MESSAGE_SOURCE_BEAN_NAME, MessageSource.class);
-		// Make MessageSource aware of parent MessageSource.
-		if (this.parent != null && this.messageSource instanceof HierarchicalMessageSource) {
-			//HierarchicalMessageSource采用的职责链的设计模式。
-			//如果消息当前对象处理不了，就将消息给上级父对象处理，把消息分层次处理。
-			HierarchicalMessageSource hms = (HierarchicalMessageSource) this.messageSource;
-			if (hms.getParentMessageSource() == null) {
-				//如果父消息源不为空，就设置父消息源，
-				hms.setParentMessageSource(getInternalParentMessageSource());
-			}
-		}
-		if (logger.isDebugEnabled()) {
-			logger.debug("Using MessageSource [" + this.messageSource + "]");
-		}
-	}
-	else {
-		// Use empty MessageSource to be able to accept getMessage calls.
-		// 包装一个空的消息源可以用getMessage方法调用。
-		DelegatingMessageSource dms = new DelegatingMessageSource();
-		// 设置父消息源
-		dms.setParentMessageSource(getInternalParentMessageSource());
-		this.messageSource = dms;
-		beanFactory.registerSingleton(MESSAGE_SOURCE_BEAN_NAME, this.messageSource);
-		if (logger.isDebugEnabled()) {
-			logger.debug("Unable to locate MessageSource with name '" + MESSAGE_SOURCE_BEAN_NAME +
-					"': using default [" + this.messageSource + "]");
-		}
-	}
-}
-```
-继续：initApplicationEventMulticaster 初始化事件广播器。可以通过multicastEvent方法广播消息
-```java
-protected void initApplicationEventMulticaster() {
-	ConfigurableListableBeanFactory beanFactory = getBeanFactory();
-	//如果容器里面有就直接拿出来用，如果没有就初始化一个。
-	if (beanFactory.containsLocalBean(APPLICATION_EVENT_MULTICASTER_BEAN_NAME)) {
-		this.applicationEventMulticaster =
-				beanFactory.getBean(APPLICATION_EVENT_MULTICASTER_BEAN_NAME, ApplicationEventMulticaster.class);
-		if (logger.isDebugEnabled()) {
-			logger.debug("Using ApplicationEventMulticaster [" + this.applicationEventMulticaster + "]");
-		}
-	}
-	else {
-		this.applicationEventMulticaster = new SimpleApplicationEventMulticaster(beanFactory);
-		beanFactory.registerSingleton(APPLICATION_EVENT_MULTICASTER_BEAN_NAME, this.applicationEventMulticaster);
-		if (logger.isDebugEnabled()) {
-			logger.debug("Unable to locate ApplicationEventMulticaster with name '" +
-					APPLICATION_EVENT_MULTICASTER_BEAN_NAME +
-					"': using default [" + this.applicationEventMulticaster + "]");
-		}
-	}
-}
-```
-继续：onRefresh方法也是一个模版方法，空方法，目的也是为了给子类继承用的。AbstractRefreshableWebApplicationContext、StaticWebApplicationContext用这个方法来刷新初始化主题源。
-继续：registerListeners 注册监听器
-```java
-protected void registerListeners() {
-	//把监听者加入到事件广播器
-	for (ApplicationListener<?> listener : getApplicationListeners()) {
-		getApplicationEventMulticaster().addApplicationListener(listener);
-	}
-
-	//获取所有的ApplicationListener的bean的名字，然后把bean名字加入到事件广播器
-	String[] listenerBeanNames = getBeanNamesForType(ApplicationListener.class, true, false);
-	for (String listenerBeanName : listenerBeanNames) {
-		getApplicationEventMulticaster().addApplicationListenerBean(listenerBeanName);
-	}
-
-	//拿到所有的earlyApplicationEvents事件消息，直接广播发送事件给所有的监听者。
-	Set<ApplicationEvent> earlyEventsToProcess = this.earlyApplicationEvents;
-	this.earlyApplicationEvents = null;
-	if (earlyEventsToProcess != null) {
-		for (ApplicationEvent earlyEvent : earlyEventsToProcess) {
-			getApplicationEventMulticaster().multicastEvent(earlyEvent);
-		}
-	}
-}
-```
-继续：finishBeanFactoryInitialization
-初始化非延迟加载的单例Bean， 实例化BeanFactory中已经被注册但是未实例化的所有实例(@Lazy注解的Bean不在此实例化)。
-```java
-protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
-	// 初始化类型转换器
-	if (beanFactory.containsBean(CONVERSION_SERVICE_BEAN_NAME) &&
-			beanFactory.isTypeMatch(CONVERSION_SERVICE_BEAN_NAME, ConversionService.class)) {
-		beanFactory.setConversionService(
-				beanFactory.getBean(CONVERSION_SERVICE_BEAN_NAME, ConversionService.class));
-	}
-
-	//获取LoadTimeWeaverAware.class的单例bean
-	String[] weaverAwareNames = beanFactory.getBeanNamesForType(LoadTimeWeaverAware.class, false, false);
-	for (String weaverAwareName : weaverAwareNames) {
-		getBean(weaverAwareName);
-	}
-
-	// 停止使用零时加载器
-	beanFactory.setTempClassLoader(null);
-
-	// 允许缓存所有的bean的定义，不允许修改
-	beanFactory.freezeConfiguration();
-
-	// 初始化所有的单例bean，@lazy bean不在这里初始化
-	beanFactory.preInstantiateSingletons();
-}
-```
-继续：finishRefresh 
-refresh结束之前需要做善后工作。包括生命周期组件LifecycleProcessor的初始化和调用、事件发布、JMX组件的处理等。
-```java
-protected void finishRefresh() {
-	// 初始化生命周期组件LifecycleProcessor
-	initLifecycleProcessor();
-
-	// 调用一次生命周期组件LifecycleProcessor
-	getLifecycleProcessor().onRefresh();
-
-	// 发布容器刷新事件
-	publishEvent(new ContextRefreshedEvent(this));
-
-	// 向MBeanServer注册LiveBeansView，可以通过JMX来监控此ApplicationContext。
-	LiveBeansView.registerApplicationContext(this);
-}
-```
-
-上面有两个一个类未讲现在来谈一下这个
 PostProcessorRegistrationDelegate 包含了beanPostProcessors的注册，和BeanFactoryPostProcessors的调用
 ```java
 public static void invokeBeanFactoryPostProcessors(
@@ -649,6 +523,156 @@ public static void invokeBeanFactoryPostProcessors(
 }
 ```
 
-这个类方法干的活也是有很多，其中就包括BeanFactory的设置、Configuration类解析、Bean实例化、属性和依赖注入、事件监听器注册。
+### registerBeanPostProcessors
+
+继续往下走：registerBeanPostProcessors
+```java
+protected void registerBeanPostProcessors(ConfigurableListableBeanFactory beanFactory) {
+	//注册BeanPostProcessors后面统一看这个PostProcessorRegistrationDelegate
+	PostProcessorRegistrationDelegate.registerBeanPostProcessors(beanFactory, this);
+}
+```
+### initMessageSource
+
+继续往下看：initMessageSource 用以支持Spring国际化。
+```java
+protected void initMessageSource() {
+	//拿到当前的beanFactory
+	ConfigurableListableBeanFactory beanFactory = getBeanFactory();
+	//如果已经存在MessageSource了
+	if (beanFactory.containsLocalBean(MESSAGE_SOURCE_BEAN_NAME)) {
+		this.messageSource = beanFactory.getBean(MESSAGE_SOURCE_BEAN_NAME, MessageSource.class);
+		// Make MessageSource aware of parent MessageSource.
+		if (this.parent != null && this.messageSource instanceof HierarchicalMessageSource) {
+			//HierarchicalMessageSource采用的职责链的设计模式。
+			//如果消息当前对象处理不了，就将消息给上级父对象处理，把消息分层次处理。
+			HierarchicalMessageSource hms = (HierarchicalMessageSource) this.messageSource;
+			if (hms.getParentMessageSource() == null) {
+				//如果父消息源不为空，就设置父消息源，
+				hms.setParentMessageSource(getInternalParentMessageSource());
+			}
+		}
+		if (logger.isDebugEnabled()) {
+			logger.debug("Using MessageSource [" + this.messageSource + "]");
+		}
+	}
+	else {
+		// Use empty MessageSource to be able to accept getMessage calls.
+		// 包装一个空的消息源可以用getMessage方法调用。
+		DelegatingMessageSource dms = new DelegatingMessageSource();
+		// 设置父消息源
+		dms.setParentMessageSource(getInternalParentMessageSource());
+		this.messageSource = dms;
+		beanFactory.registerSingleton(MESSAGE_SOURCE_BEAN_NAME, this.messageSource);
+		if (logger.isDebugEnabled()) {
+			logger.debug("Unable to locate MessageSource with name '" + MESSAGE_SOURCE_BEAN_NAME +
+					"': using default [" + this.messageSource + "]");
+		}
+	}
+}
+```
+### initApplicationEventMulticaster
+继续：initApplicationEventMulticaster 初始化事件广播器。可以通过multicastEvent方法广播消息
+```java
+protected void initApplicationEventMulticaster() {
+	ConfigurableListableBeanFactory beanFactory = getBeanFactory();
+	//如果容器里面有就直接拿出来用，如果没有就初始化一个。
+	if (beanFactory.containsLocalBean(APPLICATION_EVENT_MULTICASTER_BEAN_NAME)) {
+		this.applicationEventMulticaster =
+				beanFactory.getBean(APPLICATION_EVENT_MULTICASTER_BEAN_NAME, ApplicationEventMulticaster.class);
+		if (logger.isDebugEnabled()) {
+			logger.debug("Using ApplicationEventMulticaster [" + this.applicationEventMulticaster + "]");
+		}
+	}
+	else {
+		this.applicationEventMulticaster = new SimpleApplicationEventMulticaster(beanFactory);
+		beanFactory.registerSingleton(APPLICATION_EVENT_MULTICASTER_BEAN_NAME, this.applicationEventMulticaster);
+		if (logger.isDebugEnabled()) {
+			logger.debug("Unable to locate ApplicationEventMulticaster with name '" +
+					APPLICATION_EVENT_MULTICASTER_BEAN_NAME +
+					"': using default [" + this.applicationEventMulticaster + "]");
+		}
+	}
+}
+```
+### onRefresh
+
+继续：onRefresh方法也是一个模版方法，空方法，目的也是为了给子类继承用的。AbstractRefreshableWebApplicationContext、StaticWebApplicationContext用这个方法来刷新初始化主题源。
+继续：registerListeners 注册监听器
+```java
+protected void registerListeners() {
+	//把监听者加入到事件广播器
+	for (ApplicationListener<?> listener : getApplicationListeners()) {
+		getApplicationEventMulticaster().addApplicationListener(listener);
+	}
+
+	//获取所有的ApplicationListener的bean的名字，然后把bean名字加入到事件广播器
+	String[] listenerBeanNames = getBeanNamesForType(ApplicationListener.class, true, false);
+	for (String listenerBeanName : listenerBeanNames) {
+		getApplicationEventMulticaster().addApplicationListenerBean(listenerBeanName);
+	}
+
+	//拿到所有的earlyApplicationEvents事件消息，直接广播发送事件给所有的监听者。
+	Set<ApplicationEvent> earlyEventsToProcess = this.earlyApplicationEvents;
+	this.earlyApplicationEvents = null;
+	if (earlyEventsToProcess != null) {
+		for (ApplicationEvent earlyEvent : earlyEventsToProcess) {
+			getApplicationEventMulticaster().multicastEvent(earlyEvent);
+		}
+	}
+}
+```
+### finishBeanFactoryInitialization
+
+继续：finishBeanFactoryInitialization
+初始化非延迟加载的单例Bean， 实例化BeanFactory中已经被注册但是未实例化的所有实例(@Lazy注解的Bean不在此实例化)。
+```java
+protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
+	// 初始化类型转换器
+	if (beanFactory.containsBean(CONVERSION_SERVICE_BEAN_NAME) &&
+			beanFactory.isTypeMatch(CONVERSION_SERVICE_BEAN_NAME, ConversionService.class)) {
+		beanFactory.setConversionService(
+				beanFactory.getBean(CONVERSION_SERVICE_BEAN_NAME, ConversionService.class));
+	}
+
+	//获取LoadTimeWeaverAware.class的单例bean
+	String[] weaverAwareNames = beanFactory.getBeanNamesForType(LoadTimeWeaverAware.class, false, false);
+	for (String weaverAwareName : weaverAwareNames) {
+		getBean(weaverAwareName);
+	}
+
+	// 停止使用零时加载器
+	beanFactory.setTempClassLoader(null);
+
+	// 允许缓存所有的bean的定义，不允许修改
+	beanFactory.freezeConfiguration();
+
+	// 初始化所有的单例bean，@lazy bean不在这里初始化
+	beanFactory.preInstantiateSingletons();
+}
+```
+### finishRefresh 
+
+继续：finishRefresh 
+refresh结束之前需要做善后工作。包括生命周期组件LifecycleProcessor的初始化和调用、事件发布、JMX组件的处理等。
+```java
+protected void finishRefresh() {
+	// 初始化生命周期组件LifecycleProcessor
+	initLifecycleProcessor();
+
+	// 调用一次生命周期组件LifecycleProcessor
+	getLifecycleProcessor().onRefresh();
+
+	// 发布容器刷新事件
+	publishEvent(new ContextRefreshedEvent(this));
+
+	// 向MBeanServer注册LiveBeansView，可以通过JMX来监控此ApplicationContext。
+	LiveBeansView.registerApplicationContext(this);
+}
+```
+
+上面有两个一个类未讲现在来谈一下这个
+
+这个类方法干的活也是有很多，其中就包括BeanFactory的设置、Configuration类解析、Bean实例化、属性和依赖注入、事件监听器注册。下面会继续去分析一下每一步是怎样实现的。
 
 # 
