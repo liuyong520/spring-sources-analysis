@@ -92,7 +92,7 @@ protected String resolvePath(String path) {
 }
 ```
 
-## onrefresh
+## refresh
 
 重点介绍这个refresh方法：
 
