@@ -746,7 +746,7 @@ public class StandardEnvironment extends AbstractEnvironment {
 
 }
 ```
-MutablePropertySources是PropertySources的实现类。里面封装了一个Log对象，和用一个CopyOnWriteArrayList实现的一个PropertySource的一个集合。
+MutablePropertySources是PropertySources的实现类。里面封装了一个Log对象，和用一个CopyOnWriteArrayList实现的一个PropertySource的一个集合，里面有一个PropertySourcesPropertyResolver解析器，这个解析器在PropertyResolver章节分析。
 在StandardEnvironment实例化的时调用AbstractEnvironment构造方法。
 ```java
 public AbstractEnvironment() {
@@ -880,4 +880,98 @@ protected Set<String> doGetDefaultProfiles() {
 	}
 }
 ```
-以上环境配置相关配置的
+以上关于环境配置相关配置的代码阅读。
+
+# PropertyResolver接口
+
+## 继承图谱 
+
+![enter description here](https://www.github.com/liuyong520/pic/raw/master/小书匠/1558145690624.png)
+
+PropertySourcesPropertyResolver类里面有一个PropertySources的成员变量。类的很多方法实现都是调用的这个PropertySources成员变量的方法。PropertySourcesPropertyResolver可以通过getProperty(key)的方式获取对应的value值。
+那么PropertySourcesPropertyResolver有哪些东西呢？主要看这个方法：
+```java
+protected <T> T getProperty(String key, Class<T> targetValueType, boolean resolveNestedPlaceholders) {
+	boolean debugEnabled = logger.isDebugEnabled();
+	if (logger.isTraceEnabled()) {
+		logger.trace(String.format("getProperty(\"%s\", %s)", key, targetValueType.getSimpleName()));
+	}
+	if (this.propertySources != null) {
+		//遍历所有已经加载到的PropertySource
+		for (PropertySource<?> propertySource : this.propertySources) {
+			if (debugEnabled) {
+				logger.debug(String.format("Searching for key '%s' in [%s]", key, propertySource.getName()));
+			}
+			Object value;
+			if ((value = propertySource.getProperty(key)) != null) {
+				Class<?> valueType = value.getClass();
+				//如果是字符串，同时要求字符替换的就调用字符替换方法
+
+				if (resolveNestedPlaceholders && value instanceof String) {
+					value = resolveNestedPlaceholders((String) value);
+				}
+				if (debugEnabled) {
+					logger.debug(String.format("Found key '%s' in [%s] with type [%s] and value '%s'",
+							key, propertySource.getName(), valueType.getSimpleName(), value));
+				}
+				//如果不是字符串类型，就根据属性转换器尽心数据转换，
+				//如果类型是属性转换器无法转换的就知道抛出异常
+				if (!this.conversionService.canConvert(valueType, targetValueType)) {
+					throw new IllegalArgumentException(String.format(
+							"Cannot convert value [%s] from source type [%s] to target type [%s]",
+							value, valueType.getSimpleName(), targetValueType.getSimpleName()));
+				}
+				return this.conversionService.convert(value, targetValueType);
+			}
+		}
+	}
+	if (debugEnabled) {
+		logger.debug(String.format("Could not find key '%s' in any property source. Returning [null]", key));
+	}
+	return null;
+}
+```
+
+看看resolveNestedPlaceholders方法
+```java
+protected String resolveNestedPlaceholders(String value) {
+	//如果PropertySourcesPropertyResolver上属性设置了ignoreUnresolvableNestedPlaceholders值为true可以忽略一些不存在key的属性。
+	//如果为false，key不存在的属性直接就会抛出异常。
+	return (this.ignoreUnresolvableNestedPlaceholders ?
+			resolvePlaceholders(value) : resolveRequiredPlaceholders(value));
+}
+```
+```java
+public String resolveRequiredPlaceholders(String text) throws IllegalArgumentException {
+	if (this.strictHelper == null) {
+		//实例化一个PropertyPlaceholderHelper类，
+		this.strictHelper = createPlaceholderHelper(false);
+	}
+	//用PropertyPlaceholderHelper类去解析属性
+	return doResolvePlaceholders(text, this.strictHelper);
+}
+```
+```java
+@Override
+public String resolvePlaceholders(String text) {
+	if (this.nonStrictHelper == null) {
+		this.nonStrictHelper = createPlaceholderHelper(true);
+	}
+	return doResolvePlaceholders(text, this.nonStrictHelper);
+}
+```
+createPlaceholderHelper：
+```java
+//根据ignoreUnresolvablePlaceholders来创建PropertyPlaceholderHelper
+//placeholderPrefix 是替换的前缀，默认值是${
+//placeholderSuffix 是替换的后缀，默认值是}
+//valueSeparator 是值的分隔符，默认是：
+private PropertyPlaceholderHelper createPlaceholderHelper(boolean ignoreUnresolvablePlaceholders) {
+	return new PropertyPlaceholderHelper(this.placeholderPrefix, this.placeholderSuffix,
+			this.valueSeparator, ignoreUnresolvablePlaceholders);
+}
+```
+看看PropertyPlaceholderHelper：
+
+
+
