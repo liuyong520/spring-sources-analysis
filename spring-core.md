@@ -1144,5 +1144,204 @@ System.setProperty("spring", "classpath");
 ClassPathXmlApplicationContext context = new ClassPathXmlApplicationContext("${spring}:config.xml");
 SimpleBean bean = context.getBean(SimpleBean.class);
 ```
+# beanFactory的创建
+上面其实我们已经见到了beanFactory的方法：DefaultListableBeanFactory beanFactory = createBeanFactory();直接new DefaultListableBeanFactory的一个beanFactory实例。
 
+# configuration的加载
 
+```java
+@Override
+protected void loadBeanDefinitions(DefaultListableBeanFactory beanFactory) throws BeansException, IOException {
+	//创建一个读取bean的配置文件的加载器
+	XmlBeanDefinitionReader beanDefinitionReader = new XmlBeanDefinitionReader(beanFactory);
+
+	// Configure the bean definition reader with this context's
+	// resource loading environment.
+	// 父类被设值了就是StandardEnvironment
+	beanDefinitionReader.setEnvironment(this.getEnvironment());
+	// 这里其实被赋值的是DefaultResourceLoader的子类。
+	beanDefinitionReader.setResourceLoader(this);
+	// 设置资源实体的解析器
+	beanDefinitionReader.setEntityResolver(new ResourceEntityResolver(this));
+
+	// Allow a subclass to provide custom initialization of the reader,
+	// then proceed with actually loading the bean definitions.
+	initBeanDefinitionReader(beanDefinitionReader);
+	loadBeanDefinitions(beanDefinitionReader);
+}
+```
+## XmlBeanDefinitionReader
+先看一下这个类的继承图谱
+### 继承图谱
+![enter description here](https://www.github.com/liuyong520/pic/raw/master/小书匠/1558273300511.png)
+### 构造方法
+XmlBeanDefinitionReader会调用父类的构造方法尽行初始化环境，初始化类加载器。
+```
+protected AbstractBeanDefinitionReader(BeanDefinitionRegistry registry) {
+	Assert.notNull(registry, "BeanDefinitionRegistry must not be null");
+	this.registry = registry;
+
+	//DefaultListableBeanFactory不是ResourceLoader的类型
+	if (this.registry instanceof ResourceLoader) {
+		this.resourceLoader = (ResourceLoader) this.registry;
+	}
+	else {
+		//资源加载器PathMatchingResourcePatternResolver
+		//但是会被子类的setResourceLoader覆盖掉。
+		this.resourceLoader = new PathMatchingResourcePatternResolver();
+	}
+
+	//DefaultListableBeanFactory也不是EnvironmentCapable
+	if (this.registry instanceof EnvironmentCapable) {
+		this.environment = ((EnvironmentCapable) this.registry).getEnvironment();
+	}
+	else {
+		//初始化环境变量
+		this.environment = new StandardEnvironment();
+	}
+}
+```
+### bean的加载
+
+```java
+public int loadBeanDefinitions(String location, Set<Resource> actualResources) throws BeanDefinitionStoreException {
+	ResourceLoader resourceLoader = getResourceLoader();
+	if (resourceLoader == null) {
+		throw new BeanDefinitionStoreException(
+				"Cannot import bean definitions from location [" + location + "]: no ResourceLoader available");
+	}
+	//因为ClassPathApplicationContext实现了ResourcePatternResolver 
+
+	if (resourceLoader instanceof ResourcePatternResolver) {
+		// Resource pattern matching available.
+		try {
+			//这一句会拿到ResourcePatternResolver的对象。
+			//加载资源文件
+			Resource[] resources = ((ResourcePatternResolver) resourceLoader).getResources(location);
+			//加载所有的bean
+			int loadCount = loadBeanDefinitions(resources);
+			//这里不会执行，因为actualResources是null
+			if (actualResources != null) {
+				for (Resource resource : resources) {
+					actualResources.add(resource);
+				}
+			}
+			if (logger.isDebugEnabled()) {
+				logger.debug("Loaded " + loadCount + " bean definitions from location pattern [" + location + "]");
+			}
+			return loadCount;
+		}
+		catch (IOException ex) {
+			throw new BeanDefinitionStoreException(
+					"Could not resolve bean definition resource pattern [" + location + "]", ex);
+		}
+	}
+	else {
+		// Can only load single resources by absolute URL.
+		Resource resource = resourceLoader.getResource(location);
+		int loadCount = loadBeanDefinitions(resource);
+		if (actualResources != null) {
+			actualResources.add(resource);
+		}
+		if (logger.isDebugEnabled()) {
+			logger.debug("Loaded " + loadCount + " bean definitions from location [" + location + "]");
+		}
+		return loadCount;
+	}
+}
+	
+```
+### getResources
+
+看看getResources的方法
+```java
+public Resource[] getResources(String locationPattern) throws IOException {
+	// 因为resourcePatternResolver是PathMatchingResourcePatternResolver的实例
+	// 所以会调用PathMatchingResourcePatternResolver的getResources方法
+	return this.resourcePatternResolver.getResources(locationPattern);
+}
+```
+
+```java
+
+public Resource[] getResources(String locationPattern) throws IOException {
+	Assert.notNull(locationPattern, "Location pattern must not be null");
+	//如果是以classpath*:开头的
+	if (locationPattern.startsWith(CLASSPATH_ALL_URL_PREFIX)) {
+		// a class path resource (multiple resources for same name possible)
+		// 拿到的是AntPathMatcher实例。
+		// 如果包含*或者？就匹配成功
+		if (getPathMatcher().isPattern(locationPattern.substring(CLASSPATH_ALL_URL_PREFIX.length()))) {
+			// a class path resource pattern
+			//
+			return findPathMatchingResources(locationPattern);
+		}
+		else {
+			// all class path resources with the given name
+			// 路径没有？或者*
+			return findAllClassPathResources(locationPattern.substring(CLASSPATH_ALL_URL_PREFIX.length()));
+		}
+	}
+	else {
+		// Only look for a pattern after a prefix here
+		// (to not get fooled by a pattern symbol in a strange prefix).
+		int prefixEnd = locationPattern.indexOf(":") + 1;
+		if (getPathMatcher().isPattern(locationPattern.substring(prefixEnd))) {
+			// a file pattern
+			return findPathMatchingResources(locationPattern);
+		}
+		else {
+			// a single resource with the given name
+			return new Resource[] {getResourceLoader().getResource(locationPattern)};
+		}
+	}
+}
+```
+看看里面
+```java
+public boolean isPattern(String path) {
+	return (path.indexOf('*') != -1 || path.indexOf('?') != -1);
+}
+```
+### findPathMatchingResources
+```java
+protected Resource[] findPathMatchingResources(String locationPattern) throws IOException {
+	//Will return "/WEB-INF/" for the pattern "/WEB-INF/*.xml
+	// 获取文件的根路径
+	String rootDirPath = determineRootDir(locationPattern);
+	// Will return "*.xml" for the pattern "/WEB-INF/*.xml
+	// 获取正则表达式
+	String subPattern = locationPattern.substring(rootDirPath.length());
+	// 重新调用getResources，两个方法又开始循环调用了
+	Resource[] rootDirResources = getResources(rootDirPath);
+	Set<Resource> result = new LinkedHashSet<Resource>(16);
+	for (Resource rootDirResource : rootDirResources) {
+		rootDirResource = resolveRootDirResource(rootDirResource);
+		if (rootDirResource.getURL().getProtocol().startsWith(ResourceUtils.URL_PROTOCOL_VFS)) {
+			result.addAll(VfsResourceMatchingDelegate.findMatchingResources(rootDirResource, subPattern, getPathMatcher()));
+		}
+		else if (isJarResource(rootDirResource)) {
+			result.addAll(doFindPathMatchingJarResources(rootDirResource, subPattern));
+		}
+		else {
+			result.addAll(doFindPathMatchingFileResources(rootDirResource, subPattern));
+		}
+	}
+	if (logger.isDebugEnabled()) {
+		logger.debug("Resolved location pattern [" + locationPattern + "] to resources " + result);
+	}
+	return result.toArray(new Resource[result.size()]);
+}
+```
+### findAllClassPathResources
+
+```java
+protected Resource[] findAllClassPathResources(String location) throws IOException {
+	String path = location;
+	if (path.startsWith("/")) {
+		path = path.substring(1);
+	}
+	Set<Resource> result = doFindAllClassPathResources(path);
+	return result.toArray(new Resource[result.size()]);
+}
+```
