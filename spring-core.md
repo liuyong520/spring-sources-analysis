@@ -1306,24 +1306,31 @@ public boolean isPattern(String path) {
 ### findPathMatchingResources
 ```java
 protected Resource[] findPathMatchingResources(String locationPattern) throws IOException {
-	//Will return "/WEB-INF/" for the pattern "/WEB-INF/*.xml
+	//如果是"/WEB-INF/*.xml 拿到的值是"/WEB-INF/"
+	//如果是"/WEB-INF/*/*.xml"拿到是“/WEB-INF/*/”
+	//如果是“classpath：context/*.xml”拿到的是“classpath：context/”
 	// 获取文件的根路径
 	String rootDirPath = determineRootDir(locationPattern);
-	// Will return "*.xml" for the pattern "/WEB-INF/*.xml
 	// 获取正则表达式
 	String subPattern = locationPattern.substring(rootDirPath.length());
 	// 重新调用getResources，两个方法又开始循环调用了
+	// 如果是“classpath：context/”那此事会调用getResources里的子方法findAllClassPathResources
+	// findAllClassPathResources会拿到目录下的所有资源
 	Resource[] rootDirResources = getResources(rootDirPath);
 	Set<Resource> result = new LinkedHashSet<Resource>(16);
 	for (Resource rootDirResource : rootDirResources) {
+		
 		rootDirResource = resolveRootDirResource(rootDirResource);
+		//加载vfs文件
 		if (rootDirResource.getURL().getProtocol().startsWith(ResourceUtils.URL_PROTOCOL_VFS)) {
 			result.addAll(VfsResourceMatchingDelegate.findMatchingResources(rootDirResource, subPattern, getPathMatcher()));
 		}
+		//加载jar里面的文件
 		else if (isJarResource(rootDirResource)) {
 			result.addAll(doFindPathMatchingJarResources(rootDirResource, subPattern));
 		}
 		else {
+			//最后才是加载本地系统的文件
 			result.addAll(doFindPathMatchingFileResources(rootDirResource, subPattern));
 		}
 	}
@@ -1343,5 +1350,260 @@ protected Resource[] findAllClassPathResources(String location) throws IOExcepti
 	}
 	Set<Resource> result = doFindAllClassPathResources(path);
 	return result.toArray(new Resource[result.size()]);
+}
+```
+再看看
+```java
+protected Set<Resource> doFindAllClassPathResources(String path) throws IOException {
+	Set<Resource> result = new LinkedHashSet<Resource>(16);
+	ClassLoader cl = getClassLoader();
+	Enumeration<URL> resourceUrls = (cl != null ? cl.getResources(path) : ClassLoader.getSystemResources(path));
+	while (resourceUrls.hasMoreElements()) {
+		URL url = resourceUrls.nextElement();
+		result.add(convertClassLoaderURL(url));
+	}
+	if ("".equals(path)) {
+		// The above result is likely to be incomplete, i.e. only containing file system references.
+		// We need to have pointers to each of the jar files on the classpath as well...
+		addAllClassLoaderJarRoots(cl, result);
+	}
+	return result;
+}
+```
+说到这里仅仅也只是spring是如何找文件的。这里还没有文件的读取和解析。
+下面介绍spring配置文件的读取和解析。
+```java 
+public int loadBeanDefinitions(EncodedResource encodedResource) throws BeanDefinitionStoreException {
+	Assert.notNull(encodedResource, "EncodedResource must not be null");
+	if (logger.isInfoEnabled()) {
+		logger.info("Loading XML bean definitions from " + encodedResource.getResource());
+	}
+	// TheadLocal的已经加载的资源set集合。
+	Set<EncodedResource> currentResources = this.resourcesCurrentlyBeingLoaded.get();
+	if (currentResources == null) {
+		currentResources = new HashSet<EncodedResource>(4);
+		this.resourcesCurrentlyBeingLoaded.set(currentResources);
+	}
+	if (!currentResources.add(encodedResource)) {
+		throw new BeanDefinitionStoreException(
+				"Detected cyclic loading of " + encodedResource + " - check your import definitions!");
+	}
+	//以下这段代码就是真实读取文件的逻辑了。
+	try {
+		InputStream inputStream = encodedResource.getResource().getInputStream();
+		try {
+			InputSource inputSource = new InputSource(inputStream);
+			if (encodedResource.getEncoding() != null) {
+				inputSource.setEncoding(encodedResource.getEncoding());
+			}
+			return doLoadBeanDefinitions(inputSource, encodedResource.getResource());
+		}
+		finally {
+		 	inputStream.close();
+		}
+	}
+	catch (IOException ex) {
+		throw new BeanDefinitionStoreException(
+				"IOException parsing XML document from " + encodedResource.getResource(), ex);
+	}
+	finally {
+		currentResources.remove(encodedResource);
+		if (currentResources.isEmpty()) {
+			this.resourcesCurrentlyBeingLoaded.remove();
+		}
+	}
+}
+```
+### doLoadBeanDefinitions
+```java
+protected int doLoadBeanDefinitions(InputSource inputSource, Resource resource)
+			throws BeanDefinitionStoreException {
+	// 读取文件
+	Document doc = doLoadDocument(inputSource, resource);
+	// 这个方法里面就是配置文件的解析了。
+	return registerBeanDefinitions(doc, resource);
+}
+```
+### doLoadDocument
+```java
+protected Document doLoadDocument(InputSource inputSource, Resource resource) throws Exception {
+	// documentLoader是一个DefaultDocumentLoader对象，此类是DocumentLoader接口的唯一实现。
+	// getEntityResolver方法返回ResourceEntityResolver,
+	// ResourceEntityResolver会用xsd或者dtd约束文件做校验。
+	// errorHandler是一个SimpleSaxErrorHandler对象。
+	return this.documentLoader.loadDocument(inputSource, getEntityResolver(), this.errorHandler,
+			getValidationModeForResource(resource), isNamespaceAware());
+}
+```
+
+### loadDocument
+
+```java
+/**
+** 这里就是老套路了，可以看出，Spring还是使用了dom的方式解析，即一次全部load到内存
+**/
+public Document loadDocument(InputSource inputSource, EntityResolver entityResolver,
+		ErrorHandler errorHandler, int validationMode, boolean namespaceAware) throws Exception {
+
+	DocumentBuilderFactory factory = createDocumentBuilderFactory(validationMode, namespaceAware);
+	if (logger.isDebugEnabled()) {
+		logger.debug("Using JAXP provider [" + factory.getClass().getName() + "]");
+	}
+	DocumentBuilder builder = createDocumentBuilder(factory, entityResolver, errorHandler);
+	return builder.parse(inputSource);
+}
+```
+```java
+protected DocumentBuilderFactory createDocumentBuilderFactory(int validationMode, boolean namespaceAware{
+    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+    factory.setNamespaceAware(namespaceAware);
+    if (validationMode != XmlValidationModeDetector.VALIDATION_NONE) {
+        //此方法设为true仅对dtd有效，xsd(schema)无效
+        factory.setValidating(true);
+        if (validationMode == XmlValidationModeDetector.VALIDATION_XSD) {
+            // Enforce namespace aware for XSD...
+             //开启xsd(schema)支持
+            factory.setNamespaceAware(true);
+             //这个也是Java支持Schema的套路，可以问度娘
+            factory.setAttribute(SCHEMA_LANGUAGE_ATTRIBUTE, XSD_SCHEMA_LANGUAGE);
+        }
+    }
+    return factory;
+}
+```
+## bean解析
+### registerBeanDefinitions
+瞧一下这个方法，看看做了哪些事情。
+```java
+public int registerBeanDefinitions(Document doc, Resource resource) throws BeanDefinitionStoreException {
+	//根据反射的方式创建DefaultBeanDefinitionDocumentReader对象。
+	//这其实也是策略模式，通过setter方法可以更换其实现。修改documentReaderClass参数即可
+	BeanDefinitionDocumentReader documentReader = createBeanDefinitionDocumentReader();
+	//获取bean定义的数量
+	int countBefore = getRegistry().getBeanDefinitionCount();
+	//读取文件
+	documentReader.registerBeanDefinitions(doc, createReaderContext(resource));
+	return getRegistry().getBeanDefinitionCount() - countBefore;
+}
+```
+
+### createReaderContext
+
+```java
+public XmlReaderContext createReaderContext(Resource resource) {
+	// problemReporter是一个FailFastProblemReporter对象。
+	// eventListener是EmptyReaderEventListener对象，此类里的方法都是空实现。
+	// sourceExtractor是NullSourceExtractor对象，直接返回空，也是空实现。
+	// getNamespaceHandlerResolver默认返回DefaultNamespaceHandlerResolver对象，用来获取xsd对应的处理器。
+
+    return new XmlReaderContext(resource, this.problemReporter, this.eventListener,
+        this.sourceExtractor, this, getNamespaceHandlerResolver());
+}
+```
+XmlReaderContext的作用感觉就是这一堆参数的容器，糅合到一起传给DocumentReader，并美其名为Context。可以看出，Spring中到处都是策略模式，大量操作被抽象成接口。
+
+### registerBeanDefinitions
+此方式是在DefaultBeanDefinitionDocumentReader的里面实现的。
+```java
+@Override
+public void registerBeanDefinitions(Document doc, XmlReaderContext readerContext) {
+    this.readerContext = readerContext;
+    //获取根节点beans
+    Element root = doc.getDocumentElement();
+    //注册根节点下所有的bean
+    doRegisterBeanDefinitions(root);
+}
+```	
+### doRegisterBeanDefinitions
+
+```java
+protected void doRegisterBeanDefinitions
+(Element root) {
+		// Any nested <beans> elements will cause recursion in this method. In
+		// order to propagate and preserve <beans> default-* attributes correctly,
+		// keep track of the current (parent) delegate, which may be null. Create
+		// the new (child) delegate with a reference to the parent for fallback purposes,
+		// then ultimately reset this.delegate back to its original (parent) reference.
+		// this behavior emulates a stack of delegates without actually necessitating one.
+		BeanDefinitionParserDelegate parent = this.delegate;
+		this.delegate = createDelegate(getReaderContext(), root, parent);
+		// 默认的命名空间即
+        // http://www.springframework.org/schema/beans
+		if (this.delegate.isDefaultNamespace(root)) {
+			// 检查profile属性,获取profile属性
+			String profileSpec = root.getAttribute(PROFILE_ATTRIBUTE);
+			if (StringUtils.hasText(profileSpec)) {
+				// 分隔profile属性的值 ,分割
+				String[] specifiedProfiles = StringUtils.tokenizeToStringArray(
+						profileSpec, BeanDefinitionParserDelegate.MULTI_VALUE_ATTRIBUTE_DELIMITERS);
+				// 如果不是可用的profile的值，就直接返回
+				if (!getReaderContext().getEnvironment().acceptsProfiles(specifiedProfiles)) {
+					return;
+				}
+			}
+		}
+		// 预处理xml方法这是个空方法，
+		// 我们可以扩展这个方法，来加载解析我们自己的自定义标签。
+		preProcessXml(root);
+		// 解析
+		parseBeanDefinitions(root, this.delegate);
+		postProcessXml(root);
+
+		this.delegate = parent;
+	}
+```
+### parseBeanDefinitions
+
+```java
+`protected void parseBeanDefinitions(Element root, BeanDefinitionParserDelegate delegate) {
+	// 验证名称空间
+	// http://www.springframework.org/schema/beans
+	if (delegate.isDefaultNamespace(root)) {
+
+		NodeList nl = root.getChildNodes();
+		for (int i = 0; i < nl.getLength(); i++) {
+			Node node = nl.item(i);
+			if (node instanceof Element) {
+				Element ele = (Element) node;
+				// 检查节点是不是
+				// http://www.springframework.org/schema/beans
+				if (delegate.isDefaultNamespace(ele)) {
+					// 
+					parseDefaultElement(ele, delegate);
+				}
+				else {
+					delegate.parseCustomElement(ele);
+				}
+			}
+		}
+	}
+	else {
+		delegate.parseCustomElement(root);
+	}
+	}
+```
+
+### parseDefaultElement
+
+```java
+private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate delegate) {
+	// 处理 import标签
+	if (delegate.nodeNameEquals(ele, IMPORT_ELEMENT)) {
+		importBeanDefinitionResource(ele);
+	}
+	// 处理 alais 标签
+	else if (delegate.nodeNameEquals(ele, ALIAS_ELEMENT)) {
+		processAliasRegistration(ele);
+	}
+	// 处理 bean标签
+	else if (delegate.nodeNameEquals(ele, BEAN_ELEMENT)) {
+		processBeanDefinition(ele, delegate);
+	}
+	// 处理beans标签
+	else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
+		// recurse
+		// 循环调用doRegisterBeanDefinitions
+		doRegisterBeanDefinitions(ele);
+	}
 }
 ```
