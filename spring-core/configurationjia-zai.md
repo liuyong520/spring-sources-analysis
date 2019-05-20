@@ -1,3 +1,39 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [configuration的加载](#configuration%E7%9A%84%E5%8A%A0%E8%BD%BD)
+  - [XmlBeanDefinitionReader](#xmlbeandefinitionreader)
+    - [继承图谱](#%E7%BB%A7%E6%89%BF%E5%9B%BE%E8%B0%B1)
+    - [构造方法](#%E6%9E%84%E9%80%A0%E6%96%B9%E6%B3%95)
+    - [bean的加载](#bean%E7%9A%84%E5%8A%A0%E8%BD%BD)
+    - [getResources](#getresources)
+    - [findPathMatchingResources](#findpathmatchingresources)
+    - [findAllClassPathResources](#findallclasspathresources)
+    - [doLoadBeanDefinitions](#doloadbeandefinitions)
+    - [doLoadDocument](#doloaddocument)
+    - [loadDocument](#loaddocument)
+  - [bean解析](#bean%E8%A7%A3%E6%9E%90)
+    - [registerBeanDefinitions](#registerbeandefinitions)
+    - [createReaderContext](#createreadercontext)
+    - [registerBeanDefinitions](#registerbeandefinitions-1)
+    - [doRegisterBeanDefinitions](#doregisterbeandefinitions)
+    - [parseBeanDefinitions](#parsebeandefinitions)
+    - [parseDefaultElement](#parsedefaultelement)
+    - [importBeanDefinitionResource](#importbeandefinitionresource)
+    - [processAliasRegistration](#processaliasregistration)
+    - [registerAlias](#registeralias)
+    - [processBeanDefinition](#processbeandefinition)
+  - [BeanDefinition接口](#beandefinition%E6%8E%A5%E5%8F%A3)
+    - [继承图谱](#%E7%BB%A7%E6%89%BF%E5%9B%BE%E8%B0%B1-1)
+    - [parseBeanDefinitionElement](#parsebeandefinitionelement)
+    - [parseMetaElements](#parsemetaelements)
+    - [parseLookupOverrideSubElements](#parselookupoverridesubelements)
+    - [parseReplacedMethodSubElements](#parsereplacedmethodsubelements)
+    - [parseConstructorArgElements](#parseconstructorargelements)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # configuration的加载
 
 ```java

@@ -1,3 +1,25 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [ClassPathXmlApplicationContext](#classpathxmlapplicationcontext)
+  - [类的继承图谱](#%E7%B1%BB%E7%9A%84%E7%BB%A7%E6%89%BF%E5%9B%BE%E8%B0%B1)
+  - [构造方法](#%E6%9E%84%E9%80%A0%E6%96%B9%E6%B3%95)
+  - [setConfigLocations](#setconfiglocations)
+  - [refresh](#refresh)
+    - [prepareRefresh](#preparerefresh)
+    - [obtainFreshBeanFactory](#obtainfreshbeanfactory)
+    - [prepareBeanFactory](#preparebeanfactory)
+    - [postProcessBeanFactory](#postprocessbeanfactory)
+    - [registerBeanPostProcessors](#registerbeanpostprocessors)
+    - [initMessageSource](#initmessagesource)
+    - [initApplicationEventMulticaster](#initapplicationeventmulticaster)
+    - [onRefresh](#onrefresh)
+    - [finishBeanFactoryInitialization](#finishbeanfactoryinitialization)
+    - [finishRefresh](#finishrefresh)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 这么多的源代码，这么多包，往往不知道从何处开始下手阅读的这个源代码。我们在接触spring的时候，首先介绍的都是按照IOC、MVC、AOP、这种顺序介绍的。
 
 # ClassPathXmlApplicationContext
