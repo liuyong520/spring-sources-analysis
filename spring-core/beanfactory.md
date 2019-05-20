@@ -1,0 +1,3 @@
+# beanFactory的创建
+上面其实我们已经见到了beanFactory的方法：DefaultListableBeanFactory beanFactory = createBeanFactory();
+直接new DefaultListableBeanFactory的一个beanFactory实例。
