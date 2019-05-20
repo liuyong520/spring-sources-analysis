@@ -5,5 +5,6 @@
 * [Spring core](spring-core.md)
   * [Spring 流程分析](spring-core/springgong-zuo-liu-cheng.md)
   * [Environment](spring-core/environment.md)
+  * PropertyResolver接口
 * [Spring ](spring.md)
 
