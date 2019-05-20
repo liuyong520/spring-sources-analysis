@@ -1568,7 +1568,7 @@ protected void doRegisterBeanDefinitions
 				// 检查节点是不是
 				// http://www.springframework.org/schema/beans
 				if (delegate.isDefaultNamespace(ele)) {
-					// 
+					// 解析节点
 					parseDefaultElement(ele, delegate);
 				}
 				else {
@@ -1600,6 +1600,7 @@ private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate deleg
 		processBeanDefinition(ele, delegate);
 	}
 	// 处理beans标签
+	// 返回去调用doRegisterBeanDefinitions的方法
 	else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
 		// recurse
 		// 循环调用doRegisterBeanDefinitions
@@ -1607,3 +1608,355 @@ private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate deleg
 	}
 }
 ```
+### importBeanDefinitionResource
+处理import
+```java
+protected void importBeanDefinitionResource(Element ele) {
+	// 获取resource标记的路径
+	// <import resource="context:spring.xml"/>
+	String location = ele.getAttribute(RESOURCE_ATTRIBUTE);
+	if (!StringUtils.hasText(location)) {
+		getReaderContext().error("Resource location must not be empty", ele);
+		return;
+	}
+
+	// Resolve system properties: e.g. "${user.dir}"
+	// 字符替换标签
+	location = getReaderContext().getEnvironment().resolveRequiredPlaceholders(location);
+
+	Set<Resource> actualResources = new LinkedHashSet<Resource>(4);
+
+	// Discover whether the location is an absolute or relative URI
+	boolean absoluteLocation = false;
+	try {
+		absoluteLocation = ResourcePatternUtils.isUrl(location) || ResourceUtils.toURI(location).isAbsolute();
+	}
+	catch (URISyntaxException ex) {
+		// cannot convert to an URI, considering the location relative
+		// unless it is the well-known Spring prefix "classpath*:"
+	}
+
+	// Absolute or relative?
+	if (absoluteLocation) {
+		try {
+			int importCount = getReaderContext().getReader().loadBeanDefinitions(location, actualResources);
+			if (logger.isDebugEnabled()) {
+				logger.debug("Imported " + importCount + " bean definitions from URL location [" + location + "]");
+			}
+		}
+		catch (BeanDefinitionStoreException ex) {
+			getReaderContext().error(
+					"Failed to import bean definitions from URL location [" + location + "]", ele, ex);
+		}
+	}
+	else {
+		// No URL -> considering resource location as relative to the current file.
+		try {
+			int importCount;
+			Resource relativeResource = getReaderContext().getResource().createRelative(location);
+			if (relativeResource.exists()) {
+				importCount = getReaderContext().getReader().loadBeanDefinitions(relativeResource);
+				actualResources.add(relativeResource);
+			}
+			else {
+				String baseLocation = getReaderContext().getResource().getURL().toString();
+				importCount = getReaderContext().getReader().loadBeanDefinitions(
+						StringUtils.applyRelativePath(baseLocation, location), actualResources);
+			}
+			if (logger.isDebugEnabled()) {
+				logger.debug("Imported " + importCount + " bean definitions from relative location [" + location + "]");
+			}
+		}
+		catch (IOException ex) {
+			getReaderContext().error("Failed to resolve current resource location", ele, ex);
+		}
+		catch (BeanDefinitionStoreException ex) {
+			getReaderContext().error("Failed to import bean definitions from relative location [" + location + "]",
+					ele, ex);
+		}
+	}
+	Resource[] actResArray = actualResources.toArray(new Resource[actualResources.size()]);
+	getReaderContext().fireImportProcessed(location, actResArray, extractSource(ele));
+}
+```
+importBeanDefinitionResource套路和之前的配置文件加载完全一样，不过注意被import进来的文件是先于当前文件被解析的。上面有些周边的代码就不介绍了。
+
+### processAliasRegistration
+处理别名
+```java
+protected void processAliasRegistration(Element ele) {
+	// 拿到名字，和别名
+	String name = ele.getAttribute(NAME_ATTRIBUTE);
+	String alias = ele.getAttribute(ALIAS_ATTRIBUTE);
+	boolean valid = true;
+	if (!StringUtils.hasText(name)) {
+		getReaderContext().error("Name must not be empty", ele);
+		valid = false;
+	}
+	if (!StringUtils.hasText(alias)) {
+		getReaderContext().error("Alias must not be empty", ele);
+		valid = false;
+	}
+	if (valid) {
+		try {
+			// 核心方法，就是在DefaultListableBeanFactor注册别名，
+			// 其实就是在一个map里面写入名字和别名的映射关系。
+			getReaderContext().getRegistry().registerAlias(name, alias);
+		}
+		catch (Exception ex) {
+			getReaderContext().error("Failed to register alias '" + alias +
+					"' for bean with name '" + name + "'", ele, ex);
+		}
+		// 触发监听器
+		getReaderContext().fireAliasRegistered(name, alias, extractSource(ele));
+	}
+}
+```
+其实这个方法就是给一个bean取一个别名：比如有一个bean名为beanA，但是另一个组件想以beanB的名字使用，就可以这样定义:
+<alias name="beanA" alias="beanB"/>
+
+### registerAlias
+```java
+// 其实就是在map里加上一条映射关系。
+public void registerAlias(String name, String alias) {
+	Assert.hasText(name, "'name' must not be empty");
+	Assert.hasText(alias, "'alias' must not be empty");
+	if (alias.equals(name)) {
+		this.aliasMap.remove(alias);
+	}
+	else {
+		String registeredName = this.aliasMap.get(alias);
+		if (registeredName != null) {
+			if (registeredName.equals(name)) {
+				// An existing alias - no need to re-register
+				return;
+			}
+			if (!allowAliasOverriding()) {
+				throw new IllegalStateException("Cannot register alias '" + alias + "' for name '" +
+						name + "': It is already registered for name '" + registeredName + "'.");
+			}
+		}
+		checkForAliasCircle(name, alias);
+		this.aliasMap.put(alias, name);
+	}
+}
+```
+
+### processBeanDefinition
+
+处理bean 
+```java
+protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
+	BeanDefinitionHolder bdHolder = delegate.parseBeanDefinitionElement(ele);
+	if (bdHolder != null) {
+		bdHolder = delegate.decorateBeanDefinitionIfRequired(ele, bdHolder);
+		try {
+			// Register the final decorated instance.
+			BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
+		}
+		catch (BeanDefinitionStoreException ex) {
+			getReaderContext().error("Failed to register bean definition with name '" +
+					bdHolder.getBeanName() + "'", ele, ex);
+		}
+		// Send registration event.
+		getReaderContext().fireComponentRegistered(new BeanComponentDefinition(bdHolder));
+	}
+}
+```
+最后会调用BeanDefinitionParserDelegate.parseBeanDefinitionElement
+首先获取到id和name属性，name属性支持配置多个，以逗号分隔，如果没有指定id，那么将以第一个name属性值代替。id必须是唯一的，name属性其实是alias的角色，可以和其它的bean重复，如果name也没有配置，那么其实什么也没做。
+```java
+
+public BeanDefinitionHolder parseBeanDefinitionElement(Element ele, BeanDefinition containingBean) {
+	// 获取ID
+	String id = ele.getAttribute(ID_ATTRIBUTE);
+	// 获取name
+	String nameAttr = ele.getAttribute(NAME_ATTRIBUTE);
+	// name属性可以配置多个，用逗号分隔。
+	List<String> aliases = new ArrayList<String>();
+	if (StringUtils.hasLength(nameAttr)) {
+		String[] nameArr = StringUtils.tokenizeToStringArray(nameAttr, MULTI_VALUE_ATTRIBUTE_DELIMITERS);
+		aliases.addAll(Arrays.asList(nameArr));
+	}
+
+	String beanName = id;
+	// 如果id没有配置 就用name的数组的第一个名字代替
+	if (!StringUtils.hasText(beanName) && !aliases.isEmpty()) {
+		beanName = aliases.remove(0);
+		if (logger.isDebugEnabled()) {
+			logger.debug("No XML 'id' specified - using '" + beanName +
+					"' as bean name and " + aliases + " as aliases");
+		}
+	}
+
+	if (containingBean == null) {
+		//检查bean名字，别名是不是已经使用过了
+		checkNameUniqueness(beanName, aliases, ele);
+	}
+	// 待会我会介绍这个BeanDefinition的体系 这个方法到底干了啥？
+	// 1.这个方法会解析bean 的class标签，parent的标签。
+	// 2.然后会new一个GenericBeanDefinition，然后将class，parent的值，以及classload设置进去。
+	// 3.解析标签下的meta，key，value标签，把依赖的关系也设置进去。
+	AbstractBeanDefinition beanDefinition = parseBeanDefinitionElement(ele, beanName, containingBean);
+	if (beanDefinition != null) {
+		// 如果bean标签没有设置id，和name属性。
+		if (!StringUtils.hasText(beanName)) {
+			try {
+				if (containingBean != null) {
+					beanName = BeanDefinitionReaderUtils.generateBeanName(
+							beanDefinition, this.readerContext.getRegistry(), true);
+				}
+				else {
+					// 如果bean标签没有设置id，和name属性。
+					// 自行创建一个名字。这里会调用BeanDefinitionReaderUtils.generateBeanName方法
+					beanName = this.readerContext.generateBeanName(beanDefinition);
+					// Register an alias for the plain bean class name, if still possible,
+					// if the generator returned the class name plus a suffix.
+					// This is expected for Spring 1.2/2.0 backwards compatibility.
+					// 获取beanClassName，其实就是class属性的值。
+					String beanClassName = beanDefinition.getBeanClassName();
+					// 如果名字是以className开头且没有被使用过的，就加入到别名里。
+					if (beanClassName != null &&
+							beanName.startsWith(beanClassName) && beanName.length() > beanClassName.length() &&
+							!this.readerContext.getRegistry().isBeanNameInUse(beanClassName)) {
+						aliases.add(beanClassName);
+					}
+				}
+				if (logger.isDebugEnabled()) {
+					logger.debug("Neither XML 'id' nor 'name' specified - " +
+							"using generated bean name [" + beanName + "]");
+				}
+			}
+			catch (Exception ex) {
+				error(ex.getMessage(), ele);
+				return null;
+			}
+		}
+
+		String[] aliasesArray = StringUtils.toStringArray(aliases);
+		// 创建BeanDefinitionHolder类
+		return new BeanDefinitionHolder(beanDefinition, beanName, aliasesArray);
+	}
+
+	return null;
+}
+```
+## BeanDefinition接口
+### 继承图谱
+![enter description here](https://www.github.com/liuyong520/pic/raw/master/小书匠/1558347721946.png)
+
+### parseBeanDefinitionElement
+
+接着看AbstractBeanDefinition beanDefinition = parseBeanDefinitionElement(ele, beanName, containingBean);这句的具体实现：
+```java
+public AbstractBeanDefinition parseBeanDefinitionElement(
+			Element ele, String beanName, BeanDefinition containingBean) {
+	//把名字进行一次压栈			
+	this.parseState.push(new BeanEntry(beanName));
+
+	String className = null;
+	// 获取class属性值
+	if (ele.hasAttribute(CLASS_ATTRIBUTE)) {
+		className = ele.getAttribute(CLASS_ATTRIBUTE).trim();
+	}
+
+	try {
+		String parent = null;
+		// 获取parent的属性值
+		if (ele.hasAttribute(PARENT_ATTRIBUTE)) {
+			parent = ele.getAttribute(PARENT_ATTRIBUTE);
+		}
+		// 调用BeanDefinitionReaderUtils.createBeanDefinition（）
+		// 创建GenericBeanDefinition实例，设置className，parent。
+		AbstractBeanDefinition bd = createBeanDefinition(className, parent);
+		// 这个方法会解析singleton、scope、abstract、lazy-init、autowire、
+		// dependency-check、depends-on、init-method、autowire-candidate、
+		// primary、destroy-method、actory-method、factory-bean、constructor-arg
+		// index、type、value-type、key-type、property、ref、value等标签
+		// 设置到 GenericBeanDefinition的实例里面。
+		parseBeanDefinitionAttributes(ele, beanName, containingBean, bd);
+		// 设置描述。
+		bd.setDescription(DomUtils.getChildElementValueByTagName(ele, DESCRIPTION_ELEMENT));
+		// 解析元数据标签
+		parseMetaElements(ele, bd);
+		// 解析lookup-method标签
+		parseLookupOverrideSubElements(ele, bd.getMethodOverrides());
+		// 解析replace-method标签
+		parseReplacedMethodSubElements(ele, bd.getMethodOverrides());
+		// 解析构造方法
+		parseConstructorArgElements(ele, bd);
+		// 解析属性依赖
+		parsePropertyElements(ele, bd);
+		// 解析Qualifier标签
+		parseQualifierElements(ele, bd);
+		// 设置资源	
+		bd.setResource(this.readerContext.getResource());
+		bd.setSource(extractSource(ele));
+
+		return bd;
+	}
+	catch (Exception ex) {
+		... 
+	}
+	finally {
+		this.parseState.pop();
+	}
+
+	return null;
+}
+```
+其实这里面就已经把bean的定义bean的依赖关系都设置好了。但是bean并没有被实例化。
+### parseMetaElements
+```java
+public void parseMetaElements(Element ele, BeanMetadataAttributeAccessor attributeAccessor) {
+    NodeList nl = ele.getChildNodes();
+    for (int i = 0; i < nl.getLength(); i++) {
+        Node node = nl.item(i);
+        if (isCandidateElement(node) && nodeNameEquals(node, META_ELEMENT)) {
+            Element metaElement = (Element) node;
+            String key = metaElement.getAttribute(KEY_ATTRIBUTE);
+            String value = metaElement.getAttribute(VALUE_ATTRIBUTE);
+             //就是一个key, value的载体，无他
+            BeanMetadataAttribute attribute = new BeanMetadataAttribute(key, value);
+             //sourceExtractor默认是NullSourceExtractor，返回的是空
+            attribute.setSource(extractSource(metaElement));
+            attributeAccessor.addMetadataAttribute(attribute);
+        }
+    }
+}
+```
+AbstractBeanDefinition继承自BeanMetadataAttributeAccessor类，底层使用了一个LinkedHashMap保存metadata。这个metadata具体是做什么暂时还不知道。我们实际应用中meta标签也很少见。
+例子：
+```java
+<bean id="b" name="one, two" class="base.SimpleBean">
+    <meta key="name" value="dsfesf"/>
+</bean>
+```
+### parseLookupOverrideSubElements
+```java
+public void parseLookupOverrideSubElements(Element beanEle, MethodOverrides overrides) {
+	NodeList nl = beanEle.getChildNodes();
+	for (int i = 0; i < nl.getLength(); i++) {
+		Node node = nl.item(i);
+		if (isCandidateElement(node) && nodeNameEquals(node, LOOKUP_METHOD_ELEMENT)) {
+			Element ele = (Element) node;
+			String methodName = ele.getAttribute(NAME_ATTRIBUTE);
+			String beanRef = ele.getAttribute(BEAN_ELEMENT);
+			//以MethodOverride的方式，存放在set集合里面
+			LookupOverride override = new LookupOverride(methodName, beanRef);
+			override.setSource(extractSource(ele));
+			overrides.addOverride(override);
+		}
+	}
+}
+```
+此标签的作用在于当一个bean的某个方法被设置为lookup-method后，每次调用此方法时，都会返回一个新的指定bean的对象。例如：
+```java
+<bean id="apple" class="a.b.c.Apple" scope="prototype"/>
+<!--水果盘-->
+<bean id="fruitPlate" class="a.b.c.FruitPlate">
+    <lookup-method name="getFruit" bean="apple"/>
+</bean>
+```
+
+### parseReplacedMethodSubElements
