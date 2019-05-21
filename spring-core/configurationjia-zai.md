@@ -8,30 +8,33 @@
     - [构造方法](#%E6%9E%84%E9%80%A0%E6%96%B9%E6%B3%95)
     - [bean的加载](#bean%E7%9A%84%E5%8A%A0%E8%BD%BD)
     - [getResources](#getresources)
-    - [findPathMatchingResources](#findpathmatchingresources)
-    - [findAllClassPathResources](#findallclasspathresources)
-    - [doLoadBeanDefinitions](#doloadbeandefinitions)
-    - [doLoadDocument](#doloaddocument)
-    - [loadDocument](#loaddocument)
+      - [findPathMatchingResources](#findpathmatchingresources)
+      - [findAllClassPathResources](#findallclasspathresources)
+    - [loadBeanDefinitions](#loadbeandefinitions)
+      - [doLoadBeanDefinitions](#doloadbeandefinitions)
+        - [doLoadDocument](#doloaddocument)
   - [bean解析](#bean%E8%A7%A3%E6%9E%90)
     - [registerBeanDefinitions](#registerbeandefinitions)
-    - [createReaderContext](#createreadercontext)
-    - [registerBeanDefinitions](#registerbeandefinitions-1)
+      - [createReaderContext](#createreadercontext)
+      - [registerBeanDefinitions](#registerbeandefinitions-1)
     - [doRegisterBeanDefinitions](#doregisterbeandefinitions)
-    - [parseBeanDefinitions](#parsebeandefinitions)
-    - [parseDefaultElement](#parsedefaultelement)
-      - [importBeanDefinitionResource](#importbeandefinitionresource)
-      - [processAliasRegistration](#processaliasregistration)
-        - [registerAlias](#registeralias)
-      - [processBeanDefinition](#processbeandefinition)
-  - [BeanDefinition接口](#beandefinition%E6%8E%A5%E5%8F%A3)
-    - [继承图谱](#%E7%BB%A7%E6%89%BF%E5%9B%BE%E8%B0%B1-1)
-        - [parseBeanDefinitionElement](#parsebeandefinitionelement)
-        - [parseMetaElements](#parsemetaelements)
-        - [parseLookupOverrideSubElements](#parselookupoverridesubelements)
-        - [parseReplacedMethodSubElements](#parsereplacedmethodsubelements)
-        - [parseConstructorArgElements](#parseconstructorargelements)
-        - [parsePropertyElements](#parsepropertyelements)
+      - [parseBeanDefinitions](#parsebeandefinitions)
+        - [parseDefaultElement](#parsedefaultelement)
+        - [importBeanDefinitionResource](#importbeandefinitionresource)
+        - [processAliasRegistration](#processaliasregistration)
+          - [registerAlias](#registeralias)
+        - [processBeanDefinition](#processbeandefinition)
+          - [BeanDefinition接口](#beandefinition%E6%8E%A5%E5%8F%A3)
+          - [继承图谱](#%E7%BB%A7%E6%89%BF%E5%9B%BE%E8%B0%B1-1)
+          - [parseBeanDefinitionElement](#parsebeandefinitionelement)
+          - [parseMetaElements](#parsemetaelements)
+          - [parseLookupOverrideSubElements](#parselookupoverridesubelements)
+          - [parseReplacedMethodSubElements](#parsereplacedmethodsubelements)
+          - [parseConstructorArgElements](#parseconstructorargelements)
+          - [parsePropertyElements](#parsepropertyelements)
+          - [parseQualifierElements](#parsequalifierelements)
+        - [doRegisterBeanDefinitions](#doregisterbeandefinitions-1)
+    - [parseCustomElement](#parsecustomelement)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -192,7 +195,7 @@ public boolean isPattern(String path) {
     return (path.indexOf('*') != -1 || path.indexOf('?') != -1);
 }
 ```
-### findPathMatchingResources
+#### findPathMatchingResources
 ```java
 protected Resource[] findPathMatchingResources(String locationPattern) throws IOException {
     //如果是"/WEB-INF/*.xml 拿到的值是"/WEB-INF/"
@@ -229,7 +232,7 @@ protected Resource[] findPathMatchingResources(String locationPattern) throws IO
     return result.toArray(new Resource[result.size()]);
 }
 ```
-### findAllClassPathResources
+#### findAllClassPathResources
 
 ```java
 protected Resource[] findAllClassPathResources(String location) throws IOException {
@@ -241,7 +244,7 @@ protected Resource[] findAllClassPathResources(String location) throws IOExcepti
     return result.toArray(new Resource[result.size()]);
 }
 ```
-再看看
+再看看doFindAllClassPathResources:
 ```java
 protected Set<Resource> doFindAllClassPathResources(String path) throws IOException {
     Set<Resource> result = new LinkedHashSet<Resource>(16);
@@ -260,13 +263,11 @@ protected Set<Resource> doFindAllClassPathResources(String path) throws IOExcept
 }
 ```
 说到这里仅仅也只是spring是如何找文件的。这里还没有文件的读取和解析。
+
+### loadBeanDefinitions
 下面介绍spring配置文件的读取和解析。
 ```java 
 public int loadBeanDefinitions(EncodedResource encodedResource) throws BeanDefinitionStoreException {
-    Assert.notNull(encodedResource, "EncodedResource must not be null");
-    if (logger.isInfoEnabled()) {
-        logger.info("Loading XML bean definitions from " + encodedResource.getResource());
-    }
     // TheadLocal的已经加载的资源set集合。
     Set<EncodedResource> currentResources = this.resourcesCurrentlyBeingLoaded.get();
     if (currentResources == null) {
@@ -292,8 +293,7 @@ public int loadBeanDefinitions(EncodedResource encodedResource) throws BeanDefin
         }
     }
     catch (IOException ex) {
-        throw new BeanDefinitionStoreException(
-                "IOException parsing XML document from " + encodedResource.getResource(), ex);
+       ...
     }
     finally {
         currentResources.remove(encodedResource);
@@ -303,7 +303,7 @@ public int loadBeanDefinitions(EncodedResource encodedResource) throws BeanDefin
     }
 }
 ```
-### doLoadBeanDefinitions
+#### doLoadBeanDefinitions
 ```java
 protected int doLoadBeanDefinitions(InputSource inputSource, Resource resource)
             throws BeanDefinitionStoreException {
@@ -313,7 +313,7 @@ protected int doLoadBeanDefinitions(InputSource inputSource, Resource resource)
     return registerBeanDefinitions(doc, resource);
 }
 ```
-### doLoadDocument
+##### doLoadDocument
 ```java
 protected Document doLoadDocument(InputSource inputSource, Resource resource) throws Exception {
     // documentLoader是一个DefaultDocumentLoader对象，此类是DocumentLoader接口的唯一实现。
@@ -325,7 +325,7 @@ protected Document doLoadDocument(InputSource inputSource, Resource resource) th
 }
 ```
 
-### loadDocument
+看下 loadDocument
 
 ```java
 /**
@@ -376,7 +376,7 @@ public int registerBeanDefinitions(Document doc, Resource resource) throws BeanD
 }
 ```
 
-### createReaderContext
+#### createReaderContext
 
 ```java
 public XmlReaderContext createReaderContext(Resource resource) {
@@ -391,7 +391,7 @@ public XmlReaderContext createReaderContext(Resource resource) {
 ```
 XmlReaderContext的作用感觉就是这一堆参数的容器，糅合到一起传给DocumentReader，并美其名为Context。可以看出，Spring中到处都是策略模式，大量操作被抽象成接口。
 
-### registerBeanDefinitions
+#### registerBeanDefinitions
 此方式是在DefaultBeanDefinitionDocumentReader的里面实现的。
 ```java
 @Override
@@ -441,7 +441,7 @@ protected void doRegisterBeanDefinitions
         this.delegate = parent;
     }
 ```
-### parseBeanDefinitions
+#### parseBeanDefinitions
 
 ```java
 `protected void parseBeanDefinitions(Element root, BeanDefinitionParserDelegate delegate) {
@@ -478,7 +478,7 @@ protected void doRegisterBeanDefinitions
     }
 ```
 后面分两条支线阅读解析这块的核心
-### parseDefaultElement
+##### parseDefaultElement
 
 ```java
 private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate delegate) {
@@ -503,7 +503,7 @@ private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate deleg
     }
 }
 ```
-#### importBeanDefinitionResource
+##### importBeanDefinitionResource
 处理import
 ```java
 protected void importBeanDefinitionResource(Element ele) {
@@ -576,7 +576,7 @@ protected void importBeanDefinitionResource(Element ele) {
 ```
 importBeanDefinitionResource套路和之前的配置文件加载完全一样，不过注意被import进来的文件是先于当前文件被解析的。上面有些周边的代码就不介绍了。
 
-#### processAliasRegistration
+##### processAliasRegistration
 处理别名
 ```java
 protected void processAliasRegistration(Element ele) {
@@ -610,7 +610,7 @@ protected void processAliasRegistration(Element ele) {
 其实这个方法就是给一个bean取一个别名：比如有一个bean名为beanA，但是另一个组件想以beanB的名字使用，就可以这样定义:
 <alias name="beanA" alias="beanB"/>
 
-##### registerAlias
+###### registerAlias
 ```java
 // 其实就是在map里加上一条映射关系。
 public void registerAlias(String name, String alias) {
@@ -637,7 +637,11 @@ public void registerAlias(String name, String alias) {
 }
 ```
 
-#### processBeanDefinition
+##### processBeanDefinition
+
+###### BeanDefinition接口
+###### 继承图谱
+![enter description here](https://www.github.com/liuyong520/pic/raw/master/小书匠/1558347721946.png)
 
 处理bean 
 ```java
@@ -736,11 +740,8 @@ public BeanDefinitionHolder parseBeanDefinitionElement(Element ele, BeanDefiniti
     return null;
 }
 ```
-## BeanDefinition接口
-### 继承图谱
-![enter description here](https://www.github.com/liuyong520/pic/raw/master/小书匠/1558347721946.png)
 
-##### parseBeanDefinitionElement
+###### parseBeanDefinitionElement
 
 接着看AbstractBeanDefinition beanDefinition = parseBeanDefinitionElement(ele, beanName, containingBean);这句的具体实现：
 ```java
@@ -801,7 +802,7 @@ public AbstractBeanDefinition parseBeanDefinitionElement(
 }
 ```
 其实这里面就已经把bean的定义bean的依赖关系都设置好了。但是bean并没有被实例化。
-##### parseMetaElements
+###### parseMetaElements
 ```java
 public void parseMetaElements(Element ele, BeanMetadataAttributeAccessor attributeAccessor) {
     NodeList nl = ele.getChildNodes();
@@ -827,7 +828,7 @@ AbstractBeanDefinition继承自BeanMetadataAttributeAccessor类，底层使用�
     <meta key="name" value="dsfesf"/>
 </bean>
 ```
-##### parseLookupOverrideSubElements
+###### parseLookupOverrideSubElements
 ```java
 public void parseLookupOverrideSubElements(Element beanEle, MethodOverrides overrides) {
     NodeList nl = beanEle.getChildNodes();
@@ -854,7 +855,7 @@ public void parseLookupOverrideSubElements(Element beanEle, MethodOverrides over
 </bean>
 ```
 
-##### parseReplacedMethodSubElements
+###### parseReplacedMethodSubElements
 ```java
 public void parseReplacedMethodSubElements(Element beanEle, MethodOverrides overrides) {
     NodeList nl = beanEle.getChildNodes();
@@ -895,7 +896,7 @@ replace-method 主要作用就是替换方法体及其返回值，使用比较�
     </replaced-method>
 </bean>
 ```
-##### parseConstructorArgElements
+###### parseConstructorArgElements
 解析构造方法。构造方法注入
 ```
 <bean class="base.SimpleBean">
@@ -985,8 +986,15 @@ public void parseConstructorArgElement(Element ele, BeanDefinition bd) {
 }
 ```
 
-##### parsePropertyElements
-解析普通属性注入相关的配置的方法：
+###### parsePropertyElements
+解析property，普通属性注入相关的配置的方法：
 ```java
 
 ```
+
+###### parseQualifierElements
+解析Qulifier标签
+
+##### doRegisterBeanDefinitions
+
+### parseCustomElement
