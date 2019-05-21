@@ -33,8 +33,10 @@
           - [parseConstructorArgElements](#parseconstructorargelements)
           - [parsePropertyElements](#parsepropertyelements)
           - [parseQualifierElements](#parsequalifierelements)
-        - [doRegisterBeanDefinitions](#doregisterbeandefinitions-1)
     - [parseCustomElement](#parsecustomelement)
+- [bean的注册](#bean%E7%9A%84%E6%B3%A8%E5%86%8C)
+- [bean的包装](#bean%E7%9A%84%E5%8C%85%E8%A3%85)
+- [bean的实例化](#bean%E7%9A%84%E5%AE%9E%E4%BE%8B%E5%8C%96)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -993,8 +995,81 @@ public void parseConstructorArgElement(Element ele, BeanDefinition bd) {
 ```
 
 ###### parseQualifierElements
-解析Qulifier标签
+解析Qulifier标签。Qualifier标签能在我们注入的时候选择指定的注入值
+一般情况下和AutoWire标签使用的情况比较多，常见的@AutoWire注解上添加上@Qualifier选择合适的注入者
+如：
+```
+<bean id="animal" class="test.constructor.Animal">
+    //指定类型为test.qualifier.Person,id 为student的bean注入
+    <qualifier type="test.qualifier.Person" value="student"></qualifier>
+</bean>
+<bean id="student" class="test.qualifier.Person"></bean>
+```
+```java
+public void parseQualifierElements(Element beanEle, AbstractBeanDefinition bd) {
+    NodeList nl = beanEle.getChildNodes();
+    for (int i = 0; i < nl.getLength(); i++) {
+        Node node = nl.item(i);
+        if (isCandidateElement(node) && nodeNameEquals(node, QUALIFIER_ELEMENT)) {
+            parseQualifierElement((Element) node, bd);
+        }
+    }
+}
+```
+```java
+public void parseQualifierElement(Element ele, AbstractBeanDefinition bd) {
+    String typeName = ele.getAttribute(TYPE_ATTRIBUTE);
+    if (!StringUtils.hasLength(typeName)) {
+        error("Tag 'qualifier' must have a 'type' attribute", ele);
+        return;
+    }
+    //QualifierEntry 存放的就是class的类型即type的名字，或者class全限定名字
+    //如 a.b.c.person
+    this.parseState.push(new QualifierEntry(typeName));
+    try {
+        //根据类型去
+        AutowireCandidateQualifier qualifier = new AutowireCandidateQualifier(typeName);
+        qualifier.setSource(extractSource(ele));
+        String value = ele.getAttribute(VALUE_ATTRIBUTE);
+        if (StringUtils.hasLength(value)) {
+            //这里是存放在一个Map<String, Object>结构里，
+            其中key是value，value的值是BeanMetadataAttribute(name, value)对象。
 
-##### doRegisterBeanDefinitions
+            qualifier.setAttribute(AutowireCandidateQualifier.VALUE_KEY, value);
+        }
+        NodeList nl = ele.getChildNodes();
+        for (int i = 0; i < nl.getLength(); i++) {
+            Node node = nl.item(i);
+            //如果qualifier标签下还有attribute标签
+            //就解析对应的标签值，用BeanMetadataAttribute封装，放到AutowireCandidateQualifier对象里面。
+            if (isCandidateElement(node) && nodeNameEquals(node, QUALIFIER_ATTRIBUTE_ELEMENT)) {
+                Element attributeEle = (Element) node;
+                String attributeName = attributeEle.getAttribute(KEY_ATTRIBUTE);
+                String attributeValue = attributeEle.getAttribute(VALUE_ATTRIBUTE);
+                if (StringUtils.hasLength(attributeName) && StringUtils.hasLength(attributeValue)) {
+                    BeanMetadataAttribute attribute = new BeanMetadataAttribute(attributeName, attributeValue);
+                    attribute.setSource(extractSource(attributeEle));
+                    qualifier.addMetadataAttribute(attribute);
+                }
+                else {
+                    error("Qualifier 'attribute' tag must have a 'name' and 'value'", attributeEle);
+                    return;
+                }
+            }
+        }
+        bd.addQualifier(qualifier);
+    }
+    finally {
+        this.parseState.pop();
+    }
+}
+```
+看看AutowireCandidateQualifier的继承图谱：
+![enter description here](https://www.github.com/liuyong520/pic/raw/master/小书匠/1558450481943.png)
 
+阅读到这里parseDefaultElement这一条线就看完了。下面看自定义解析这条线，spring为何能支持很多其他的标签，比如属性标签p，比如context标签c、比如Aop标签。都是通过这个自定义解析才能得以实现。在配置文件解析这块思想做到了极致。以至于，很多其他框架都借鉴了这块的思想。
 ### parseCustomElement
+
+# bean的注册
+# bean的包装
+# bean的实例化
