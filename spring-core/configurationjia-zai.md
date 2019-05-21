@@ -460,7 +460,11 @@ protected void doRegisterBeanDefinitions
                     parseDefaultElement(ele, delegate);
                 }
                 else {
-                    //自定义解析xml
+                    //自定义解析xml，方便我们扩展的标签。原理是这样子的 
+                    //我们的context相关标签，以及我们的后面介绍的Aop标签，都是通过这个方法去扩展的。
+                    //1.首先会根据你的namespace标签值，去选择根据namespace里面的值去map里面选择一个解析器。map里面存储的值是<namespace,resolverClassName>
+                    //2.拿到这个这个解析对象class对象，通过反射的方式创建解析，
+                    //3.调用解析器里面的resover方法，去解析扩展的标签。
                     delegate.parseCustomElement(ele);
                 }
             }
@@ -472,7 +476,7 @@ protected void doRegisterBeanDefinitions
     }
     }
 ```
-
+后面分两条支线阅读解析这块的核心
 ### parseDefaultElement
 
 ```java
@@ -498,7 +502,7 @@ private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate deleg
     }
 }
 ```
-### importBeanDefinitionResource
+#### importBeanDefinitionResource
 处理import
 ```java
 protected void importBeanDefinitionResource(Element ele) {
@@ -571,7 +575,7 @@ protected void importBeanDefinitionResource(Element ele) {
 ```
 importBeanDefinitionResource套路和之前的配置文件加载完全一样，不过注意被import进来的文件是先于当前文件被解析的。上面有些周边的代码就不介绍了。
 
-### processAliasRegistration
+#### processAliasRegistration
 处理别名
 ```java
 protected void processAliasRegistration(Element ele) {
@@ -605,7 +609,7 @@ protected void processAliasRegistration(Element ele) {
 其实这个方法就是给一个bean取一个别名：比如有一个bean名为beanA，但是另一个组件想以beanB的名字使用，就可以这样定义:
 <alias name="beanA" alias="beanB"/>
 
-### registerAlias
+##### registerAlias
 ```java
 // 其实就是在map里加上一条映射关系。
 public void registerAlias(String name, String alias) {
@@ -632,7 +636,7 @@ public void registerAlias(String name, String alias) {
 }
 ```
 
-### processBeanDefinition
+#### processBeanDefinition
 
 处理bean 
 ```java
@@ -735,7 +739,7 @@ public BeanDefinitionHolder parseBeanDefinitionElement(Element ele, BeanDefiniti
 ### 继承图谱
 ![enter description here](https://www.github.com/liuyong520/pic/raw/master/小书匠/1558347721946.png)
 
-### parseBeanDefinitionElement
+##### parseBeanDefinitionElement
 
 接着看AbstractBeanDefinition beanDefinition = parseBeanDefinitionElement(ele, beanName, containingBean);这句的具体实现：
 ```java
@@ -796,7 +800,7 @@ public AbstractBeanDefinition parseBeanDefinitionElement(
 }
 ```
 其实这里面就已经把bean的定义bean的依赖关系都设置好了。但是bean并没有被实例化。
-### parseMetaElements
+##### parseMetaElements
 ```java
 public void parseMetaElements(Element ele, BeanMetadataAttributeAccessor attributeAccessor) {
     NodeList nl = ele.getChildNodes();
@@ -822,7 +826,7 @@ AbstractBeanDefinition继承自BeanMetadataAttributeAccessor类，底层使用�
     <meta key="name" value="dsfesf"/>
 </bean>
 ```
-### parseLookupOverrideSubElements
+##### parseLookupOverrideSubElements
 ```java
 public void parseLookupOverrideSubElements(Element beanEle, MethodOverrides overrides) {
     NodeList nl = beanEle.getChildNodes();
@@ -849,7 +853,7 @@ public void parseLookupOverrideSubElements(Element beanEle, MethodOverrides over
 </bean>
 ```
 
-### parseReplacedMethodSubElements
+##### parseReplacedMethodSubElements
 ```java
 public void parseReplacedMethodSubElements(Element beanEle, MethodOverrides overrides) {
     NodeList nl = beanEle.getChildNodes();
@@ -890,7 +894,7 @@ replace-method 主要作用就是替换方法体及其返回值，使用比较�
     </replaced-method>
 </bean>
 ```
-### parseConstructorArgElements
+##### parseConstructorArgElements
 解析构造方法。构造方法注入
 ```
 <bean class="base.SimpleBean">
@@ -911,6 +915,7 @@ public void parseConstructorArgElements(Element beanEle, BeanDefinition bd) {
     }
 }
 ```
+看看调用方法parseConstructorArgElement
 ```java
 public void parseConstructorArgElement(Element ele, BeanDefinition bd) {
     String indexAttr = ele.getAttribute(INDEX_ATTRIBUTE);
@@ -977,4 +982,10 @@ public void parseConstructorArgElement(Element ele, BeanDefinition bd) {
         }
     }
 }
+```
+
+##### parsePropertyElements
+解析普通属性注入相关的配置的方法：
+```java
+
 ```
