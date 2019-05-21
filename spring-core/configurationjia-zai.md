@@ -1069,7 +1069,124 @@ public void parseQualifierElement(Element ele, AbstractBeanDefinition bd) {
 
 阅读到这里parseDefaultElement这一条线就看完了。下面看自定义解析这条线，spring为何能支持很多其他的标签，比如属性标签p，比如context标签c、比如Aop标签。都是通过这个自定义解析才能得以实现。在配置文件解析这块思想做到了极致。以至于，很多其他框架都借鉴了这块的思想。
 ### parseCustomElement
+自定义解析，其实最终是通过加载自定义解析器去解析的。现在咱们来一探究尽
+#### parseCustomElement
+```
+public BeanDefinition parseCustomElement(Element ele, BeanDefinition containingBd) {
+    // 获取到命名空间值
+    String namespaceUri = getNamespaceURI(ele);
+    // 拿到名称空间处理器
+    // 1.拿到解析上下文中NamespaceHandlerResolver的DefaultNamespaceHandlerResolver实例
+    // 2.解析处理一下命名空间，拿到具体的NamespaceHandler
+    NamespaceHandler handler = this.readerContext.getNamespaceHandlerResolver().resolve(namespaceUri);
+    if (handler == null) {
+        error("Unable to locate Spring NamespaceHandler for XML schema namespace [" + namespaceUri + "]", ele);
+        return null;
+    }
+    return handler.parse(ele, new ParserContext(this.readerContext, this, containingBd));
+}
+```
+#### DefaultNamespaceHandlerResolver
 
-# bean的注册
-# bean的包装
-# bean的实例化
+```java 
+public DefaultNamespaceHandlerResolver(ClassLoader classLoader) {
+    this(classLoader, DEFAULT_HANDLER_MAPPINGS_LOCATION);
+}
+```
+其中DEFAULT_HANDLER_MAPPINGS_LOCATION="META-INF/spring.handlers";
+找一个实例看下"META-INF/spring.handlers"下面有什么东西，如spring-beans项目里的p标签和c标签。
+```
+http\://www.springframework.org/schema/c=org.springframework.beans.factory.xml.SimpleConstructorNamespaceHandler
+http\://www.springframework.org/schema/p=org.springframework.beans.factory.xml.SimplePropertyNamespaceHandler
+http\://www.springframework.org/schema/util=org.springframework.beans.factory.xml.UtilNamespaceHandler
+```
+#### DefaultNamespaceHandlerResolver.resolver
+```java
+public NamespaceHandler resolve(String namespaceUri) {
+    // 加载配置文件里配置好的NamespaceHandler。烂加载模式。
+    Map<String, Object> handlerMappings = getHandlerMappings();
+    // 通过namespaceUri去map表里面找对应的handler
+    Object handlerOrClassName = handlerMappings.get(namespaceUri);
+    if (handlerOrClassName == null) {
+        return null;
+    }
+    //如果是NamespaceHandler类型就直接返回了，
+    else if (handlerOrClassName instanceof NamespaceHandler) {
+        return (NamespaceHandler) handlerOrClassName;
+    }
+    //如果不是就根据class对象，用反射的方式去加载对应handler
+    //配置文件一般都是配置的class全限定名，
+    //如果是第一次解析对应标签，会执行下面的逻辑，nameHandler初始化之后，会缓存起来供下次使用。
+    else {
+        String className = (String) handlerOrClassName;
+        try {
+            Class<?> handlerClass = ClassUtils.forName(className, this.classLoader);
+            if (!NamespaceHandler.class.isAssignableFrom(handlerClass)) {
+                throw new FatalBeanException("Class [" + className + "] for namespace [" + namespaceUri +
+                        "] does not implement the [" + NamespaceHandler.class.getName() + "] interface");
+            }
+            NamespaceHandler namespaceHandler = (NamespaceHandler) 
+            // 根据class定义实例化对象    
+            BeanUtils.instantiateClass(handlerClass);
+            namespaceHandler.init();
+            handlerMappings.put(namespaceUri, namespaceHandler);
+            return namespaceHandler;
+        }
+        catch (ClassNotFoundException ex) {
+            throw new FatalBeanException("NamespaceHandler class [" + className + "] for namespace [" +
+                    namespaceUri + "] not found", ex);
+        }
+        catch (LinkageError err) {
+            throw new FatalBeanException("Invalid NamespaceHandler class [" + className + "] for namespace [" +
+                    namespaceUri + "]: problem with handler class file or dependent class", err);
+        }
+    }
+}
+
+```
+```java
+/**
+ * Load the specified NamespaceHandler mappings lazily.
+ */
+private Map<String, Object> getHandlerMappings() {
+    //如果没有被加载就加载，这里判断两次为null就是为了在多线程情况下的并发加载的问题。
+    if (this.handlerMappings == null) {
+        synchronized (this) {
+            if (this.handlerMappings == null) {
+                try {
+                    Properties mappings =
+                            PropertiesLoaderUtils.loadAllProperties(this.handlerMappingsLocation, this.classLoader);
+                    Map<String, Object> handlerMappings = new ConcurrentHashMap<String, Object>(mappings.size());
+                    CollectionUtils.mergePropertiesIntoMap(mappings, handlerMappings);
+                    this.handlerMappings = handlerMappings;
+                }
+                catch (IOException ex) {
+                   ...
+                }
+            }
+        }
+    }
+    return this.handlerMappings;
+}
+```
+#### NamespaceHandler.parse
+这里就是个性化的方法了，因为每个NamespaceHanlder处理的标签都不一祥。重点看一下这个实现：NamespaceHandlerSupport这里面的实现，因为很多NamespaceHanlder都是继承的这个抽象类：如图：
+
+![enter description here](https://www.github.com/liuyong520/pic/raw/master/小书匠/1558453927509.png)
+```java
+public BeanDefinition parse(Element element, ParserContext parserContext) {
+    return findParserForElement(element, parserContext).parse(element, parserContext);
+}
+```
+```java
+private BeanDefinitionParser findParserForElement(Element element, ParserContext parserContext) {
+    String localName = parserContext.getDelegate().getLocalName(element);
+    BeanDefinitionParser parser = this.parsers.get(localName);
+    if (parser == null) {
+        parserContext.getReaderContext().fatal(
+                "Cannot locate BeanDefinitionParser for element [" + localName + "]", element);
+    }
+    return parser;
+}
+```
+以上就是configuration 配置文件的加载过程了。下一章阅读分享bean的注册以及bean的实例化。
