@@ -34,9 +34,10 @@
           - [parsePropertyElements](#parsepropertyelements)
           - [parseQualifierElements](#parsequalifierelements)
     - [parseCustomElement](#parsecustomelement)
-- [bean的注册](#bean%E7%9A%84%E6%B3%A8%E5%86%8C)
-- [bean的包装](#bean%E7%9A%84%E5%8C%85%E8%A3%85)
-- [bean的实例化](#bean%E7%9A%84%E5%AE%9E%E4%BE%8B%E5%8C%96)
+      - [parseCustomElement](#parsecustomelement-1)
+      - [DefaultNamespaceHandlerResolver](#defaultnamespacehandlerresolver)
+      - [DefaultNamespaceHandlerResolver.resolver](#defaultnamespacehandlerresolverresolver)
+      - [NamespaceHandler.parse](#namespacehandlerparse)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
