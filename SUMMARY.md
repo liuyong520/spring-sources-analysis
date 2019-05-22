@@ -5,7 +5,7 @@
 ---
 
 * [Introduction](README.md)
-* [Spring beans](spring-beans.md)
+* [Spring Aop](spring-beans.md)
 * [Spring core](spring-core.md)
   * [Spring 流程分析](spring-core/springgong-zuo-liu-cheng.md)
   * [Environment接口](spring-core/environment.md)
