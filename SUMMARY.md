@@ -21,5 +21,5 @@
 * [Spring MVC](spring-mvc.md)
   * [配置解析](spring-mvc/pei-zhi-jie-xi.md)
 * [Spring Transaction](spring-transaction.md)
-  * 配置解析
+  * [配置解析](spring-transaction/pei-zhi-jie-xi.md)
 
