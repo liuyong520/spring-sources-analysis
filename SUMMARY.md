@@ -15,7 +15,7 @@
   * [configuration加载](spring-core/configurationjia-zai.md)
   * [Bean实例化](spring-core/beanshi-li-hua.md)
 * [Spring Context](spring-context.md)
-  * 配置解析
+  * [配置解析](spring-context/pei-zhi-jie-xi.md)
 * [Spring Task](spring-task.md)
   * [配置解析](spring-task/pei-zhi-jie-xi.md)
 * [Spring MVC](spring-mvc.md)
