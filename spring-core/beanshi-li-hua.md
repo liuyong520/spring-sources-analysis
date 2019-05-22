@@ -953,7 +953,7 @@ protected void populateBean(String beanName, RootBeanDefinition mbd, BeanWrapper
 
         boolean hasInstAwareBpps = hasInstantiationAwareBeanPostProcessors();
         boolean needsDepCheck = (mbd.getDependencyCheck() != RootBeanDefinition.DEPENDENCY_CHECK_NONE);
-        // 注入依赖检查
+        // 注入依赖检查。以及后置处理器的触发
         if (hasInstAwareBpps || needsDepCheck) {
             PropertyDescriptor[] filteredPds = filterPropertyDescriptorsForDependencyCheck(bw, mbd.allowCaching);
             if (hasInstAwareBpps) {
@@ -971,11 +971,11 @@ protected void populateBean(String beanName, RootBeanDefinition mbd, BeanWrapper
                 checkDependencies(beanName, mbd, filteredPds, pvs);
             }
         }
-
+        //设值
         applyPropertyValues(beanName, mbd, bw, pvs);
     }
 ```
-这里主要关注三个方法
+这里主要关注两个方法。
 ### autowireByName
 其实就是根据名字去map里面找对应bean，然后实例化，设置进去
 ```
