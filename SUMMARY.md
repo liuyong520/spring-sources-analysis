@@ -20,6 +20,6 @@
   * 配置解析
 * [Spring MVC](spring-mvc.md)
   * 配置解析
-* Spring Transaction
+* [Spring Transaction](spring-transaction.md)
   * 配置解析
 
