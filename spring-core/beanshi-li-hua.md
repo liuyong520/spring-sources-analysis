@@ -143,7 +143,7 @@ public BeanDefinitionHolder decorateBeanDefinitionIfRequired(
 }
 ```
 bean的实例化
-```
+```java
 public void preInstantiateSingletons() throws BeansException {
     //获取所有的beanName
     List<String> beanNames = new ArrayList<String>(this.beanDefinitionNames);
