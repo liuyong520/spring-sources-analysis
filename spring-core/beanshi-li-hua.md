@@ -486,7 +486,7 @@ protected Object doCreateBean(final String beanName, final RootBeanDefinition mb
         Object exposedObject = bean;
         try {
             //关键方法
-            //
+            //依赖注入
             populateBean(beanName, mbd, instanceWrapper);
             if (exposedObject != null) {
                 exposedObject = initializeBean(beanName, exposedObject, mbd);
@@ -889,3 +889,161 @@ public static <T> T instantiateClass(Constructor<T> ctor, Object... args) throws
 }
 ```
 通过反射生成Bean的实例。看到前面有一步makeAccessible，这意味着即使Bean的构造函数是private、protected的，依然不影响Bean的构造。注意一下，这里被实例化出来的Bean并不会直接返回，而是会被包装为BeanWrapper继续在后面使用。
+单例bean会缓存起来。多例bean spring每次都会自行创建。
+
+# 依赖注入
+populateBean这里把容器里的bean的依赖关系，注入到对应的bean里
+这里可以说是IOC的核心代码了。
+## populateBean
+```java
+protected void populateBean(String beanName, RootBeanDefinition mbd, BeanWrapper bw) {
+        PropertyValues pvs = mbd.getPropertyValues();
+        //校验
+        if (bw == null) {
+            if (!pvs.isEmpty()) {
+                throw new BeanCreationException(
+                        mbd.getResourceDescription(), beanName, "Cannot apply property values to null instance");
+            }
+            else {
+                // Skip property population phase for null instance.
+                return;
+            }
+        }
+
+        // Give any InstantiationAwareBeanPostProcessors the opportunity to modify the
+        // state of the bean before properties are set. This can be used, for example,
+        // to support styles of field injection.
+        boolean continueWithPropertyPopulation = true;
+        //前置处理器
+        if (!mbd.isSynthetic() && hasInstantiationAwareBeanPostProcessors()) {
+            for (BeanPostProcessor bp : getBeanPostProcessors()) {
+                if (bp instanceof InstantiationAwareBeanPostProcessor) {
+                    InstantiationAwareBeanPostProcessor ibp = (InstantiationAwareBeanPostProcessor) bp;
+                    if (!ibp.postProcessAfterInstantiation(bw.getWrappedInstance(), beanName)) {
+                        continueWithPropertyPopulation = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!continueWithPropertyPopulation) {
+            return;
+        }
+        // 按照名字注入或者类型注入
+        if (mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_BY_NAME ||
+                mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_BY_TYPE) {
+            //拿到类的所有属性
+            MutablePropertyValues newPvs = new MutablePropertyValues(pvs);
+
+            // Add property values based on autowire by name if applicable.
+            // 如果是按照名称注入，注入顺序是先按照名字注入，然后是按照类型注入
+            if (mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_BY_NAME) {
+                autowireByName(beanName, mbd, bw, newPvs);
+            }
+
+            // Add property values based on autowire by type if applicable.
+            //如果是按照类型注入
+            if (mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_BY_TYPE) {
+                autowireByType(beanName, mbd, bw, newPvs);
+            }
+
+            pvs = newPvs;
+        }
+
+        boolean hasInstAwareBpps = hasInstantiationAwareBeanPostProcessors();
+        boolean needsDepCheck = (mbd.getDependencyCheck() != RootBeanDefinition.DEPENDENCY_CHECK_NONE);
+        // 注入依赖检查
+        if (hasInstAwareBpps || needsDepCheck) {
+            PropertyDescriptor[] filteredPds = filterPropertyDescriptorsForDependencyCheck(bw, mbd.allowCaching);
+            if (hasInstAwareBpps) {
+                for (BeanPostProcessor bp : getBeanPostProcessors()) {
+                    if (bp instanceof InstantiationAwareBeanPostProcessor) {
+                        InstantiationAwareBeanPostProcessor ibp = (InstantiationAwareBeanPostProcessor) bp;
+                        pvs = ibp.postProcessPropertyValues(pvs, filteredPds, bw.getWrappedInstance(), beanName);
+                        if (pvs == null) {
+                            return;
+                        }
+                    }
+                }
+            }
+            if (needsDepCheck) {
+                checkDependencies(beanName, mbd, filteredPds, pvs);
+            }
+        }
+
+        applyPropertyValues(beanName, mbd, bw, pvs);
+    }
+```
+这里主要关注三个方法
+### autowireByName
+其实就是根据名字去map里面找对应bean，然后实例化，设置进去
+```
+protected void autowireByName(
+            String beanName, AbstractBeanDefinition mbd, BeanWrapper bw, MutablePropertyValues pvs) {
+
+    String[] propertyNames = unsatisfiedNonSimpleProperties(mbd, bw);
+    for (String propertyName : propertyNames) {
+        if (containsBean(propertyName)) {
+            //获取bean的实例
+            Object bean = getBean(propertyName);
+            //注入进去
+            pvs.add(propertyName, bean);
+            registerDependentBean(propertyName, beanName);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Added autowiring by name from bean name '" + beanName +
+                        "' via property '" + propertyName + "' to bean named '" + propertyName + "'");
+            }
+        }
+        else {
+            if (logger.isTraceEnabled()) {
+                logger.trace("Not autowiring property '" + propertyName + "' of bean '" + beanName +
+                        "' by name: no matching bean found");
+            }
+        }
+    }
+}
+```
+### autowireByType
+```java
+protected void autowireByType(
+            String beanName, AbstractBeanDefinition mbd, BeanWrapper bw, MutablePropertyValues pvs) {
+
+    TypeConverter converter = getCustomTypeConverter();
+    if (converter == null) {
+        converter = bw;
+    }
+
+    Set<String> autowiredBeanNames = new LinkedHashSet<String>(4);
+    String[] propertyNames = unsatisfiedNonSimpleProperties(mbd, bw);
+    for (String propertyName : propertyNames) {
+        try {
+            PropertyDescriptor pd = bw.getPropertyDescriptor(propertyName);
+            // Don't try autowiring by type for type Object: never makes sense,
+            // even if it technically is a unsatisfied, non-simple property.
+            if (Object.class != pd.getPropertyType()) {
+                MethodParameter methodParam = BeanUtils.getWriteMethodParameter(pd);
+                // Do not allow eager init for type matching in case of a prioritized post-processor.
+                boolean eager = !PriorityOrdered.class.isAssignableFrom(bw.getWrappedClass());
+                DependencyDescriptor desc = new AutowireByTypeDependencyDescriptor(methodParam, eager);
+                //这里会去找类型相同的bean。这里代码比较长，有兴趣可以看一下。
+                Object autowiredArgument = resolveDependency(desc, beanName, autowiredBeanNames, converter);
+                if (autowiredArgument != null) {
+                    pvs.add(propertyName, autowiredArgument);
+                }
+                for (String autowiredBeanName : autowiredBeanNames) {
+                    registerDependentBean(autowiredBeanName, beanName);
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Autowiring by type from bean name '" + beanName + "' via property '" +
+                                propertyName + "' to bean named '" + autowiredBeanName + "'");
+                    }
+                }
+                autowiredBeanNames.clear();
+            }
+        }
+        catch (BeansException ex) {
+            throw new UnsatisfiedDependencyException(mbd.getResourceDescription(), beanName, propertyName, ex);
+        }
+    }
+}
+```
