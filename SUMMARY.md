@@ -14,7 +14,8 @@
   * [Bean实例化](spring-core/beanshi-li-hua.md)
 * [Spring Aop](spring-aop.md)
   * [Aop配置解析](spring-aop/aoppei-zhi-jie-xi.md)
-  * JDK动态代理实现
+  * [JDK动态代理实现](spring-aop/jdkdong-tai-dai-li-shi-xian.md)
+  * CGLIB代理实现
 * [Spring Context](spring-context.md)
   * [配置解析](spring-context/pei-zhi-jie-xi.md)
 * [Spring Task](spring-task.md)
