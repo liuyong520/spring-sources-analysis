@@ -177,8 +177,9 @@ public Object intercept(Object proxy, Method method, Object[] args, MethodProxy 
     }
 }
 ```
-和JDK很类似，也是先获取拦截器链，如果拦截器链不为空，先执行拦截器链中的方法，在执行目标方法
-
+和JDK很类似，也是先获取拦截器链，如果拦截器链不为空，先执行拦截器链中的方法，在执行目标方法.
+执行一样的方法，都是ReflectiveMethodInvocation.proceed
+## ReflectiveMethodInvocation.proceed
 ```java
 public Object proceed() throws Throwable {
         //  We start with an index of -1 and increment early.
