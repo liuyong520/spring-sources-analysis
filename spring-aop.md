@@ -1,9 +1,9 @@
 * [Spring AOP自动加载](/spring-aop/aoppei-zhi-jie-xi.md.md)
-* [Environment接口](/spring-core/environment.md)
-* [PropertyResolver接口](/spring-core/propertyresolverjie-kou.md)
-* [BeanFactory容器创建](/spring-core/beanfactoryrong-qi-chuang-jian.md)
-* [configuration加载](/spring-core/configurationjia-zai.md)
-* [bean实例化](/spring-core/beanshi-li-hua.md)
+* [JDK动态代理](/spring-aop/jdkdong-tai-dai-li-shi-xian.md)
+* [CGLIB动态代理](/spring-aop/cglibdai-li-shi-xian.md.md)
+* [AOP拦截器](/spring-aop/aoplan-jie-qi.md)
+* [AOP高级特性](/spring-core/configurationjia-zai.md)
+
 
 
 
